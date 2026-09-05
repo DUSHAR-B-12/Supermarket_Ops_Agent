@@ -22,6 +22,11 @@ class SessionManager:
             self.db.add(session)
             self.db.commit()
             self.db.refresh(session)
+        else:
+            try:
+                self.db.refresh(session)
+            except Exception:
+                pass
         return session
 
     def set_active_draft_bill(self, user_id: str, bill_id: Optional[int]) -> None:

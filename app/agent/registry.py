@@ -188,7 +188,7 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
     },
     {
         "name": "finalize_bill",
-        "description": "Finalize a draft bill with payment method (Cash, UPI, Card, Khata). Validates stock, deducts inventory atomically.",
+        "description": "Finalize a draft bill: transitions status from 'draft' to 'finalized', validates stock, deducts inventory atomically, and records the payment method. Call this tool when the user says 'finalize the bill', 'complete the bill', 'confirm the sale', 'finish this bill', or any equivalent request to close a draft bill. Accepts payment_method: Cash, UPI, Card, or Khata (defaults to Cash).",
         "parameters": {
             "type": "object",
             "properties": {
@@ -252,27 +252,27 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
     },
     {
         "name": "get_preference",
-        "description": "Get owner standing preference value by key.",
+        "description": "Get owner standing preference value by key. (user_id is automatically injected, do NOT ask the user for it).",
         "parameters": {
             "type": "object",
             "properties": {
-                "user_id": {"type": "string"},
+                "user_id": {"type": "string", "description": "Automatically injected, leave blank."},
                 "key": {"type": "string"},
             },
-            "required": ["user_id", "key"],
+            "required": ["key"],
         },
     },
     {
         "name": "set_preference",
-        "description": "Save owner standing preference (e.g., default payment method, shop name).",
+        "description": "Save owner standing preference (e.g., default payment method, shop name). (user_id is automatically injected, do NOT ask the user for it).",
         "parameters": {
             "type": "object",
             "properties": {
-                "user_id": {"type": "string"},
+                "user_id": {"type": "string", "description": "Automatically injected, leave blank."},
                 "key": {"type": "string"},
                 "value": {"type": "string"},
             },
-            "required": ["user_id", "key", "value"],
+            "required": ["key", "value"],
         },
     },
     {
@@ -292,7 +292,10 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
         "parameters": {
             "type": "object",
             "properties": {
-                "date_str": {"type": "string", "description": "Date in YYYY-MM-DD format (optional)"}
+                "date_str": {
+                    "type": "string",
+                    "description": "Optional date string in YYYY-MM-DD format (e.g. '2026-09-05'). Do NOT pass null. For today, pass today's date string or omit date_str entirely."
+                }
             },
         },
     },
@@ -302,7 +305,10 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
         "parameters": {
             "type": "object",
             "properties": {
-                "date_str": {"type": "string", "description": "Date in YYYY-MM-DD format (optional)"}
+                "date_str": {
+                    "type": "string",
+                    "description": "Optional date string in YYYY-MM-DD format (e.g. '2026-09-05'). Do NOT pass null. For today, pass today's date string or omit date_str entirely."
+                }
             },
         },
     },
@@ -316,9 +322,12 @@ def execute_tool(db: Session, tool_name: str, arguments: Dict[str, Any]) -> Dict
         logger.error(f"Unknown tool requested: '{tool_name}'")
         return {"error": f"Tool '{tool_name}' is not registered."}
 
-    logger.info(f"Executing tool '{tool_name}' with args: {arguments}")
+    # Normalize/strip None values passed for optional arguments
+    sanitized_args = {k: v for k, v in arguments.items() if v is not None}
+
+    logger.info(f"Executing tool '{tool_name}' with args: {sanitized_args}")
     try:
-        result = tool_func(db=db, **arguments)
+        result = tool_func(db=db, **sanitized_args)
         logger.info(f"Tool '{tool_name}' returned success: {result}")
         return {"status": "success", "data": result}
     except Exception as e:

@@ -74,8 +74,20 @@ class BillingService:
             .first()
         )
 
+        current_qty = float(existing_item.quantity) if existing_item else 0.0
+        requested_total = current_qty + float(quantity)
+        available_stock = float(product.quantity)
+
+        if available_stock < requested_total:
+            max_additional_qty = max(0.0, available_stock - current_qty)
+            raise ValueError(
+                f"Oversell Guard: Cannot bill {requested_total} {product.unit} of '{product.name}'. "
+                f"Only {available_stock} in stock. Existing draft has {current_qty} {product.unit}. "
+                f"You can add at most {max_additional_qty} more to this draft."
+            )
+
         if existing_item:
-            new_qty = float(existing_item.quantity) + float(quantity)
+            new_qty = requested_total
             tax_breakup = self.tax_service.calculate_item_tax(
                 unit_price=float(product.selling_price),
                 quantity=new_qty,
@@ -127,6 +139,11 @@ class BillingService:
         )
         if not item:
             raise ValueError(f"Product ID {product_id} is not present in bill {bill_id}.")
+
+        # Validate stock availability for new_quantity before updating draft
+        self.inventory_service.validate_stock_availability(
+            product_id=product_id, requested_qty=new_quantity
+        )
 
         tax_breakup = self.tax_service.calculate_item_tax(
             unit_price=float(item.unit_price),

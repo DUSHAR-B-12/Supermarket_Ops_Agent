@@ -10,13 +10,11 @@ TEST_DATABASE_URL = "sqlite:///:memory:"
 @pytest.fixture(autouse=True)
 def mock_llm_for_tests():
     """Autouse fixture to ensure unit tests run deterministically with mock LLM client."""
+    from app.agent.llm_client import LLMClient
+    fallback_client = LLMClient()
     with patch("app.agent.runner.get_llm_client") as mock_get_llm:
         mock_client = MagicMock()
-        mock_client.generate_completion.side_effect = lambda history, user_message, tool_results: (
-            ("\n".join([f"Executed {tr.get('name')}" for tr in tool_results]), None)
-            if tool_results
-            else ("Processed request", None)
-        )
+        mock_client.generate_completion.side_effect = fallback_client._call_mock
         mock_get_llm.return_value = mock_client
         yield mock_client
 

@@ -24,9 +24,17 @@ def get_llm_client() -> LLMClient:
 def format_tool_response(tool_results: List[Dict[str, Any]]) -> str:
     """
     Format tool execution results directly into a concise, shopkeeper-friendly
-    natural language response, saving an extra LLM API call turn.
+    natural language response, saving extra LLM API calls.
     """
+    action_tools = {
+        "add_bill_item", "edit_bill_item", "remove_bill_item",
+        "create_draft_bill", "finalize_bill", "record_khata_credit", "record_khata_repayment"
+    }
+    has_action_tool = any(tr.get("name") in action_tools and tr.get("status") == "success" for tr in tool_results)
+
     replies = []
+    seen_bill_summaries = set()
+
     for tr in tool_results:
         tool_name = tr.get("name")
         status = tr.get("status")
@@ -41,7 +49,47 @@ def format_tool_response(tool_results: List[Dict[str, Any]]) -> str:
             replies.append(f"✅ Executed {tool_name} successfully.")
             continue
 
-        if tool_name == "receive_stock":
+        # If an action tool succeeded, suppress intermediate search/lookup chatter unless error
+        if has_action_tool and tool_name in ["search_products", "get_product", "get_customer"]:
+            continue
+
+        if tool_name in ["add_bill_item", "edit_bill_item", "remove_bill_item", "get_bill"]:
+            bill_num = data.get("bill_number") or f"#{data.get('id') or data.get('bill_id')}"
+            
+            # Remove previous summary for this bill if we are updating it,
+            # so that only the FINAL state of the bill is output.
+            if bill_num in seen_bill_summaries:
+                replies = [r for r in replies if not r.startswith(f"🧾 **Draft Bill {bill_num} Summary**:")]
+            seen_bill_summaries.add(bill_num)
+
+            items = data.get("items", [])
+            if not items:
+                replies.append(f"🧾 **Draft Bill {bill_num} Summary**:\nDraft bill updated. Current Grand Total: **₹{data.get('grand_total', 0.0):.2f}**.")
+            else:
+                item_lines = []
+                for it in items:
+                    pname = it.get("product_name", "Product")
+                    qty = it.get("quantity", 0)
+                    uprice = it.get("unit_price", 0.0)
+                    tot = it.get("total", 0.0)
+                    gst = it.get("gst_rate", 0.0)
+                    item_lines.append(f"• **{pname}**: {qty} x ₹{uprice:.2f} = ₹{tot:.2f} (GST {gst:.0f}%)")
+                items_str = "\n".join(item_lines)
+
+                subtotal = data.get("subtotal", 0.0)
+                tot_tax = data.get("total_tax", 0.0)
+                cgst = data.get("cgst", 0.0)
+                sgst = data.get("sgst", 0.0)
+                grand_total = data.get("grand_total", 0.0)
+
+                replies.append(
+                    f"🧾 **Draft Bill {bill_num} Summary**:\n"
+                    f"{items_str}\n\n"
+                    f"Subtotal: ₹{subtotal:.2f}\n"
+                    f"GST Tax: ₹{tot_tax:.2f} (CGST ₹{cgst:.2f} + SGST ₹{sgst:.2f})\n"
+                    f"💰 **Grand Total: ₹{grand_total:.2f}**"
+                )
+        elif tool_name == "receive_stock":
             replies.append(f"✅ Received stock for **{data.get('name')}**. New stock level: **{data.get('new_quantity')}**.")
         elif tool_name == "search_products":
             prods = data if isinstance(data, list) else []
@@ -67,8 +115,6 @@ def format_tool_response(tool_results: List[Dict[str, Any]]) -> str:
                 replies.append("\n".join(lines))
         elif tool_name == "create_draft_bill":
             replies.append(f"🧾 Created draft bill #{data.get('bill_number')}.")
-        elif tool_name in ["add_bill_item", "edit_bill_item", "remove_bill_item"]:
-            replies.append(f"🧾 Draft bill item updated. Current Grand Total: **₹{data.get('grand_total'):.2f}** ({data.get('item_count')} items).")
         elif tool_name == "calculate_bill":
             replies.append(f"💰 Bill Calculation: Subtotal ₹{data.get('subtotal'):.2f}, CGST ₹{data.get('cgst'):.2f}, SGST ₹{data.get('sgst'):.2f}, Grand Total: **₹{data.get('grand_total'):.2f}**.")
         elif tool_name == "finalize_bill":
@@ -107,7 +153,7 @@ def format_tool_response(tool_results: List[Dict[str, Any]]) -> str:
 async def process_agent_message(user_id: int, message_text: str, db: Optional[Session] = None) -> str:
     """
     Main Agent Orchestration Loop with API Quota Optimization:
-    Observe -> Reason -> Act (via LLM function calls) -> Directly format tool results (1-turn completion).
+    Observe -> Reason -> Act (via LLM function calls) -> Format tool results.
     """
     user_str = str(user_id)
     logger.info(f"Agent runner processing message for user_id={user_str}: '{message_text}'")
@@ -126,7 +172,7 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
         llm = get_llm_client()
         tool_results = None
         turn_count = 0
-        max_turns = 5
+        max_turns = 15
         final_reply = ""
         generated_artifacts = []
 
@@ -140,12 +186,12 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
 
             text_resp, tool_calls = llm.generate_completion(
                 history=history,
-                user_message=context_msg if turn_count == 1 else message_text,
+                user_message=context_msg,
                 tool_results=tool_results,
             )
 
             if tool_calls:
-                tool_results = []
+                step_results = []
                 for call in tool_calls:
                     tool_name = call["name"]
                     arguments = call.get("arguments", {})
@@ -154,8 +200,7 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
                         arguments["bill_id"] = active_bill_id
 
                     if tool_name in ["generate_invoice_pdf", "get_preference", "set_preference"]:
-                        if "user_id" in arguments and not arguments.get("user_id"):
-                            arguments["user_id"] = user_str
+                        arguments["user_id"] = user_str
 
                     res = execute_tool(db, tool_name, arguments)
                     
@@ -174,20 +219,39 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
                             if file_key in data_dict and os.path.exists(data_dict[file_key]):
                                 generated_artifacts.append(data_dict[file_key])
 
-                    tool_results.append({
+                    step_results.append({
                         "name": tool_name,
                         "status": res.get("status"),
                         "data": res.get("data"),
                         "error": res.get("error"),
                     })
 
-                # API QUOTA OPTIMIZATION:
-                # Format response directly from tool results and complete turn in 1 LLM request.
-                final_reply = format_tool_response(tool_results)
-                break
+                if tool_results is None:
+                    tool_results = []
+                tool_results.extend(step_results)
+
+                # For action tools like add_bill_item, we must NOT break early because there might be more items to process.
+                # We only break early if a tool is unequivocally terminal (e.g., finalizes the transaction).
+                terminal_tools = {
+                    "create_draft_bill", "finalize_bill", "generate_invoice_pdf",
+                    "generate_analysis_deck", "record_khata_credit", "record_khata_repayment",
+                    "set_preference", "get_daily_close"
+                }
+                executed_tool_names = {c["name"] for c in tool_calls}
+
+                if not executed_tool_names.isdisjoint(terminal_tools):
+                    logger.info("Terminal tool executed. Breaking ReAct loop early.")
+                    final_reply = format_tool_response(tool_results)
+                    break
+
+                logger.info("Executed tools allow continuation. Continuing ReAct loop.")
+                continue
 
             if text_resp:
-                final_reply = text_resp
+                if tool_results:
+                    final_reply = format_tool_response(tool_results)
+                else:
+                    final_reply = text_resp
                 break
 
         if not final_reply:

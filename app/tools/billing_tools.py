@@ -12,29 +12,17 @@ def create_draft_bill(
 def add_bill_item(db: Session, bill_id: int, product_id: int, quantity: float) -> Dict[str, Any]:
     service = BillingService(db)
     bill = service.add_bill_item(bill_id=bill_id, product_id=product_id, quantity=quantity)
-    return {
-        "bill_id": bill.id,
-        "grand_total": float(bill.grand_total),
-        "item_count": len(bill.items),
-    }
+    return get_bill(db, bill.id)
 
 def edit_bill_item(db: Session, bill_id: int, product_id: int, new_quantity: float) -> Dict[str, Any]:
     service = BillingService(db)
     bill = service.edit_bill_item(bill_id=bill_id, product_id=product_id, new_quantity=new_quantity)
-    return {
-        "bill_id": bill.id,
-        "grand_total": float(bill.grand_total),
-        "item_count": len(bill.items),
-    }
+    return get_bill(db, bill.id)
 
 def remove_bill_item(db: Session, bill_id: int, product_id: int) -> Dict[str, Any]:
     service = BillingService(db)
     bill = service.remove_bill_item(bill_id=bill_id, product_id=product_id)
-    return {
-        "bill_id": bill.id,
-        "grand_total": float(bill.grand_total),
-        "item_count": len(bill.items),
-    }
+    return get_bill(db, bill.id)
 
 def get_bill(db: Session, bill_id: int) -> Optional[Dict[str, Any]]:
     service = BillingService(db)
@@ -43,6 +31,7 @@ def get_bill(db: Session, bill_id: int) -> Optional[Dict[str, Any]]:
         return None
     return {
         "id": bill.id,
+        "bill_id": bill.id,
         "bill_number": bill.bill_number,
         "customer_id": bill.customer_id,
         "status": bill.status.value,
@@ -51,6 +40,7 @@ def get_bill(db: Session, bill_id: int) -> Optional[Dict[str, Any]]:
         "sgst": float(bill.sgst),
         "total_tax": float(bill.total_tax),
         "grand_total": float(bill.grand_total),
+        "item_count": len(bill.items),
         "payment_method": bill.payment_method,
         "items": [
             {

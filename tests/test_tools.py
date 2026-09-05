@@ -64,8 +64,8 @@ def test_khata_tools(db_session):
     assert rep["new_credit_balance"] == 200.0
 
 def test_preference_tools(db_session):
-    set_res = set_preference(db_session, "user100", "shop_name", "Gupta Kirana Store")
-    assert set_res["value"] == "Gupta Kirana Store"
+    set_res = set_preference(db_session, "user100", "shop_name", "GreenBasket Supermart")
+    assert set_res["value"] == "GreenBasket Supermart"
 
     get_res = get_preference(db_session, "user100", "shop_name")
-    assert get_res["value"] == "Gupta Kirana Store"
+    assert get_res["value"] == "GreenBasket Supermart"

@@ -185,10 +185,9 @@ def test_oversell_rejection(db_session):
 
     b_service = BillingService(db_session)
     bill = b_service.create_draft_bill()
-    b_service.add_bill_item(bill.id, p.id, 10.0)
 
     with pytest.raises(ValueError, match="Oversell Guard"):
-        b_service.finalize_bill(bill.id, payment_method="Cash")
+        b_service.add_bill_item(bill.id, p.id, 10.0)
 
 # 12. Double-Finalization Protection
 def test_double_finalization_protection(db_session):
@@ -230,6 +229,10 @@ def test_khata_repayment(db_session):
     # Non-existent customer repayment rejection
     with pytest.raises(ValueError, match="does not exist"):
         khata_service.record_repayment(customer_id=99999, amount=100.0)
+
+    # Overpayment rejection
+    with pytest.raises(ValueError, match="exceeds outstanding Khata balance"):
+        khata_service.record_repayment(customer.id, 300.0)  # current balance is 200.0
 
 # 15. Preference Persistence Test
 def test_preference_persistence(db_session):

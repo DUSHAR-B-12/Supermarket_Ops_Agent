@@ -40,8 +40,8 @@ data/*.db
 *.swo
 
 # Artifacts output (PDFs, PPTXs generated at runtime)
-app/artifacts/*.pdf
-app/artifacts/*.pptx
+app/artifacts/invoices/
+app/artifacts/decks/
 
 # Pytest
 .pytest_cache/

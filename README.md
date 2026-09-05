@@ -37,8 +37,22 @@ cp .env.example .env
 
 Ensure the following variables are configured in `.env`:
 - `TELEGRAM_BOT_TOKEN` - Obtain from [@BotFather](https://t.me/BotFather)
-- `LLM_API_KEY` - API key for LLM provider (e.g. Gemini / OpenAI / Anthropic)
+- `GEMINI_API_KEY` - Your primary Google Gemini API key
+- `GEMINI_MODEL` - Primary model (e.g. `gemini-3.8-flash`)
+- `GEMINI_FALLBACK_MODELS` - Comma-separated list of fallback models
+- `GROQ_API_KEY` - Secondary fallback Groq API key
 - `DATABASE_URL` - SQLite URL (default: `sqlite:///./data/supermarket.db`)
+
+### Example Commands
+Interact with the bot naturally in Telegram:
+- "What do we have in stock?"
+- "Add 100 packets of Aashirvaad Atta 5kg to stock"
+- "Make a bill for Ravi"
+- "Add 2 Tata Salt 1kg and 3 Maggi 70g"
+- "Finalize the bill"
+- "Generate invoice"
+- "Ravi paid ₹500 towards his khata"
+- "Generate daily close presentation"
 
 ### 2. Install Dependencies
 ```bash

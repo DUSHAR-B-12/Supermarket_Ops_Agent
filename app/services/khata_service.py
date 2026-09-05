@@ -64,6 +64,9 @@ class KhataService:
         if not customer:
             raise ValueError(f"Cannot record repayment: Customer ID {customer_id} does not exist.")
 
+        if float(customer.credit_balance) < float(amount):
+            raise ValueError(f"Repayment of ₹{amount:.2f} exceeds outstanding Khata balance of ₹{float(customer.credit_balance):.2f}.")
+
         customer.credit_balance = float(customer.credit_balance) - float(amount)
         tx = KhataTransaction(
             customer_id=customer_id,

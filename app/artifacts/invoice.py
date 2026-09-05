@@ -9,15 +9,26 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 from app.db.models import Bill, BillStatus
+from app.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
+# ── GreenBasket Supermart Brand Palette ──────────────────────────────
+BRAND_DARK_GREEN = colors.HexColor("#1B5E20")   # Main header / brand text
+BRAND_GREEN = colors.HexColor("#2E7D32")         # Section headers, accents
+BRAND_LIGHT_GREEN = colors.HexColor("#43A047")   # Table header background
+BRAND_PALE_GREEN = colors.HexColor("#C8E6C9")    # Grid lines, subtle accents
+BRAND_WHITE = colors.white
 
-def generate_pdf_invoice(bill: Bill, shop_name: str = "Gupta Kirana Store", output_dir: Optional[str] = None) -> str:
+
+def generate_pdf_invoice(bill: Bill, shop_name: Optional[str] = None, output_dir: Optional[str] = None) -> str:
     """
     Generate a clean, GST-compliant PDF invoice using ReportLab.
     Must be called on a FINALIZED bill.
     """
+    if shop_name is None:
+        shop_name = settings.SHOP_NAME
+
     if bill.status != BillStatus.FINALIZED:
         raise ValueError(f"Cannot generate invoice for bill #{bill.bill_number} because status is '{bill.status.value}'. Must be 'finalized'.")
 
@@ -44,11 +55,11 @@ def generate_pdf_invoice(bill: Bill, shop_name: str = "Gupta Kirana Store", outp
         parent=styles["Heading1"],
         fontSize=20,
         leading=24,
-        textColor=colors.HexColor("#1A365D"),
+        textColor=BRAND_DARK_GREEN,
         alignment=0,
     )
     meta_style = ParagraphStyle("InvoiceMeta", parent=styles["Normal"], fontSize=10, leading=14)
-    header_cell_style = ParagraphStyle("HeaderCell", parent=styles["Normal"], fontSize=9, leading=11, fontName="Helvetica-Bold", textColor=colors.white)
+    header_cell_style = ParagraphStyle("HeaderCell", parent=styles["Normal"], fontSize=9, leading=11, fontName="Helvetica-Bold", textColor=BRAND_WHITE)
     cell_style = ParagraphStyle("BodyCell", parent=styles["Normal"], fontSize=9, leading=11)
 
     story = []
@@ -110,11 +121,11 @@ def generate_pdf_invoice(bill: Bill, shop_name: str = "Gupta Kirana Store", outp
 
     items_table = Table(table_data, colWidths=[140, 45, 55, 45, 65, 60, 60, 70])
     items_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2B6CB0")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+        ("BACKGROUND", (0, 0), (-1, 0), BRAND_LIGHT_GREEN),
+        ("TEXTCOLOR", (0, 0), (-1, 0), BRAND_WHITE),
         ("ALIGN", (0, 0), (-1, -1), "LEFT"),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E0")),
+        ("GRID", (0, 0), (-1, -1), 0.5, BRAND_PALE_GREEN),
         ("TOPPADDING", (0, 0), (-1, -1), 5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
     ]))
@@ -136,15 +147,15 @@ def generate_pdf_invoice(bill: Bill, shop_name: str = "Gupta Kirana Store", outp
         ("ALIGN", (1, 0), (1, -1), "RIGHT"),
         ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
         ("FONTSIZE", (0, -1), (-1, -1), 11),
-        ("LINEABOVE", (0, 0), (-1, 0), 1, colors.HexColor("#2B6CB0")),
-        ("LINEBELOW", (0, -1), (-1, -1), 1.5, colors.HexColor("#2B6CB0")),
+        ("LINEABOVE", (0, 0), (-1, 0), 1, BRAND_GREEN),
+        ("LINEBELOW", (0, -1), (-1, -1), 1.5, BRAND_GREEN),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
     story.append(summary_table)
 
     story.append(Spacer(1, 25))
-    story.append(Paragraph("Thank you for shopping with us! Please come again.", ParagraphStyle("Footer", parent=styles["Normal"], alignment=1, fontSize=10, textColor=colors.gray)))
+    story.append(Paragraph("Thank you for shopping at GreenBasket Supermart! Please visit again.", ParagraphStyle("Footer", parent=styles["Normal"], alignment=1, fontSize=10, textColor=BRAND_GREEN)))
 
     doc.build(story)
     logger.info(f"Generated PDF invoice at: {file_path}")

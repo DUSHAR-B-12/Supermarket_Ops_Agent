@@ -6,7 +6,16 @@ from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 
+from app.config.settings import settings
+
 logger = logging.getLogger(__name__)
+
+# ── GreenBasket Supermart Brand Palette (PPTX) ──────────────────────
+BRAND_DARK_GREEN = RGBColor(27, 94, 32)     # #1B5E20 — titles, main brand
+BRAND_GREEN = RGBColor(46, 125, 50)         # #2E7D32 — section accents
+BRAND_LIGHT_GREEN = RGBColor(67, 160, 71)   # #43A047 — highlights
+DARK_GRAY = RGBColor(45, 55, 72)            # body text
+
 
 def generate_analysis_deck_pptx(daily_data: Dict[str, Any], output_dir: Optional[str] = None) -> str:
     """
@@ -23,10 +32,7 @@ def generate_analysis_deck_pptx(daily_data: Dict[str, Any], output_dir: Optional
 
     prs = Presentation()
 
-    # Colors
-    NAVY = RGBColor(26, 54, 93)
-    BLUE = RGBColor(43, 108, 176)
-    DARK_GRAY = RGBColor(45, 55, 72)
+    shop_name = settings.SHOP_NAME
 
     def add_title(slide, text):
         tx_box = slide.shapes.add_textbox(Inches(0.8), Inches(0.5), Inches(8.4), Inches(0.8))
@@ -35,7 +41,7 @@ def generate_analysis_deck_pptx(daily_data: Dict[str, Any], output_dir: Optional
         p.text = text
         p.font.size = Pt(24)
         p.font.bold = True
-        p.font.color.rgb = NAVY
+        p.font.color.rgb = BRAND_DARK_GREEN
 
     blank_layout = prs.slide_layouts[6]
 
@@ -47,10 +53,10 @@ def generate_analysis_deck_pptx(daily_data: Dict[str, Any], output_dir: Optional
     tf1.word_wrap = True
     
     p = tf1.paragraphs[0]
-    p.text = f"🏪 Store Operations Report for {date_str}"
+    p.text = f"🏪 {shop_name} — Operations Report for {date_str}"
     p.font.size = Pt(18)
     p.font.bold = True
-    p.font.color.rgb = BLUE
+    p.font.color.rgb = BRAND_GREEN
 
     bullets = [
         f"💰 Total Sales Revenue: ₹ {daily_data.get('total_sales', 0.0):.2f}",
@@ -131,7 +137,7 @@ def generate_analysis_deck_pptx(daily_data: Dict[str, Any], output_dir: Optional
         p = tf4.paragraphs[0]
         p.text = "✅ Stock levels are healthy. No items below reorder levels."
         p.font.size = Pt(16)
-        p.font.color.rgb = RGBColor(56, 161, 105)
+        p.font.color.rgb = BRAND_LIGHT_GREEN
 
     # Slide 5: Khata Outstanding Credit
     slide5 = prs.slides.add_slide(blank_layout)
@@ -145,7 +151,7 @@ def generate_analysis_deck_pptx(daily_data: Dict[str, Any], output_dir: Optional
     p.text = f"📋 Total Customer Credit Outstanding: ₹ {total_khata:.2f}"
     p.font.size = Pt(18)
     p.font.bold = True
-    p.font.color.rgb = BLUE
+    p.font.color.rgb = BRAND_GREEN
     p.space_after = Pt(15)
 
     khata_sales = daily_data.get("payment_breakdown", {}).get("Khata", 0.0)

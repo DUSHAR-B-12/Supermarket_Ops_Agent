@@ -7,6 +7,7 @@ from app.artifacts.invoice import generate_pdf_invoice
 from app.artifacts.analysis_deck import generate_analysis_deck_pptx
 from app.services.daily_close_service import DailyCloseService
 from app.services.preference_service import PreferenceService
+from app.config.settings import settings
 
 
 def generate_invoice_pdf(
@@ -31,8 +32,8 @@ def generate_invoice_pdf(
     if bill.status != BillStatus.FINALIZED:
         raise ValueError(f"Bill #{bill.bill_number} is not finalized. Status is '{bill.status.value}'.")
 
-    # Get shop name from preferences if present
-    shop_name = "Gupta Kirana Store"
+    # Get shop name: user preference > settings > default
+    shop_name = settings.SHOP_NAME
     if user_id:
         pref = PreferenceService(db).get_preference(str(user_id), "shop_name")
         if pref:

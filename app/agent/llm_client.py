@@ -9,42 +9,63 @@ from app.agent.registry import TOOL_SCHEMAS
 
 logger = logging.getLogger(__name__)
 
+
 class LLMClient:
+    """
+    Multi-provider LLM Client supporting Primary (Google Gemini) and Secondary (Groq API)
+    with automatic graceful fallback on rate limits / quota / provider errors.
+    """
+
     def __init__(self):
         self.gemini_key = os.getenv("GEMINI_API_KEY") or getattr(settings, "GEMINI_API_KEY", "")
-        self.llm_key = os.getenv("LLM_API_KEY") or getattr(settings, "LLM_API_KEY", "")
-        self.model_name = (
+        self.gemini_model = (
             os.getenv("GEMINI_MODEL")
-            or os.getenv("LLM_MODEL")
-            or getattr(settings, "GEMINI_MODEL", None)
-            or getattr(settings, "LLM_MODEL", "gemini-3.6-flash")
+            or getattr(settings, "GEMINI_MODEL", "gemini-3.8-flash")
+        )
+        
+        fallback_str = os.getenv("GEMINI_FALLBACK_MODELS") or getattr(settings, "GEMINI_FALLBACK_MODELS", "")
+        self.gemini_fallback_models = [m.strip() for m in fallback_str.split(",") if m.strip()]
+
+        self.groq_key = os.getenv("GROQ_API_KEY") or getattr(settings, "GROQ_API_KEY", "")
+        self.groq_model = (
+            os.getenv("GROQ_MODEL")
+            or getattr(settings, "GROQ_MODEL", "qwen/qwen3.8-27b")
         )
 
+        # Legacy OpenAI support if configured via LLM_API_KEY
+        self.llm_key = os.getenv("LLM_API_KEY") or getattr(settings, "LLM_API_KEY", "")
+        self.llm_model = os.getenv("LLM_MODEL") or getattr(settings, "LLM_MODEL", "gemini-3.6-flash")
 
-
-        self.client_type = None
+        self.gemini_client = None
+        self.groq_client = None
+        self.openai_client = None
 
         if self.gemini_key and self.gemini_key != "placeholder_gemini_key":
             try:
                 from google import genai
-                self.client = genai.Client(api_key=self.gemini_key)
-                self.client_type = "google_genai"
-                logger.info("Initialized Google GenAI LLM client.")
+                self.gemini_client = genai.Client(api_key=self.gemini_key)
+                logger.info("Initialized Google GenAI primary LLM client.")
             except Exception as e:
                 logger.warning(f"Could not initialize google.genai: {e}")
 
-        if not self.client_type and self.llm_key and self.llm_key != "placeholder_llm_key":
+        if self.groq_key and self.groq_key != "placeholder_groq_key":
             try:
                 from openai import OpenAI
-                self.client = OpenAI(api_key=self.llm_key)
-                self.client_type = "openai"
-                logger.info("Initialized OpenAI LLM client.")
+                self.groq_client = OpenAI(
+                    api_key=self.groq_key,
+                    base_url="https://api.groq.com/openai/v1"
+                )
+                logger.info("Initialized Groq secondary LLM client.")
+            except Exception as e:
+                logger.warning(f"Could not initialize Groq client: {e}")
+
+        if self.llm_key and self.llm_key != "placeholder_llm_key":
+            try:
+                from openai import OpenAI
+                self.openai_client = OpenAI(api_key=self.llm_key)
+                logger.info("Initialized generic OpenAI client.")
             except Exception as e:
                 logger.warning(f"Could not initialize OpenAI client: {e}")
-
-        if not self.client_type:
-            logger.info("No live LLM API key detected. Running in Mock/Deterministic mode.")
-            self.client_type = "mock"
 
     def generate_completion(
         self,
@@ -53,110 +74,229 @@ class LLMClient:
         tool_results: Optional[List[Dict[str, Any]]] = None,
     ) -> Tuple[Optional[str], Optional[List[Dict[str, Any]]]]:
         """
-        Runs a completion turn.
-        Returns:
-            (final_text, tool_calls_list)
-            If tool_calls_list is returned, the runner executes them and feeds results back.
-            If final_text is returned, the turn is complete.
+        Runs a completion turn trying Primary (Gemini) first, with fallback to Secondary (Groq).
+        Returns: (final_text, tool_calls_list)
         """
-        if self.client_type == "google_genai":
-            return self._call_google_genai(history, user_message, tool_results)
-        elif self.client_type == "openai":
-            return self._call_openai(history, user_message, tool_results)
-        else:
-            return self._call_mock(history, user_message, tool_results)
+        # Primary Provider: Google Gemini with Fallback Chain
+        if self.gemini_client:
+            gemini_models_to_try = [self.gemini_model] + getattr(self, "gemini_fallback_models", [])
+            last_gemini_err = None
+            
+            for model_name in gemini_models_to_try:
+                try:
+                    logger.info(f"Calling primary provider: Google Gemini ({model_name})")
+                    return self._call_google_genai(history, user_message, tool_results, model_name=model_name)
+                except Exception as gemini_err:
+                    # We catch Exception here because the google.genai SDK exceptions (like APIError) inherit from Exception.
+                    # This ensures we fallback on rate limits, model unavailability, etc.
+                    logger.warning(f"Gemini model {model_name} failed with: {gemini_err}; trying next fallback if available")
+                    last_gemini_err = gemini_err
+            
+            # If all Gemini models failed, fallback to Groq if configured
+            if self.groq_client:
+                logger.info(f"Attempting fallback to secondary provider: Groq ({self.groq_model})")
+                try:
+                    return self._call_groq(history, user_message, tool_results)
+                except Exception as groq_err:
+                    logger.error(f"Secondary provider (Groq) also failed: {groq_err}")
+                    return f"⚠️ All LLM providers failed. Primary (Gemini) error: {last_gemini_err}. Secondary (Groq) error: {groq_err}", None
+            
+            # Fallback to generic OpenAI if configured
+            if self.openai_client:
+                logger.info("Attempting fallback to generic OpenAI client.")
+                try:
+                    return self._call_openai(history, user_message, tool_results)
+                except Exception as openai_err:
+                    logger.error(f"Generic OpenAI client also failed: {openai_err}")
+
+            return f"⚠️ Primary AI provider (Gemini) error: {last_gemini_err}", None
+
+        # Secondary Provider direct: Groq
+        if self.groq_client:
+            try:
+                logger.info(f"Calling Groq provider ({self.groq_model})")
+                return self._call_groq(history, user_message, tool_results)
+            except Exception as groq_err:
+                logger.error(f"Groq provider error: {groq_err}")
+                return f"⚠️ Groq API error: {groq_err}", None
+
+        # Generic OpenAI direct
+        if self.openai_client:
+            try:
+                logger.info("Calling generic OpenAI provider.")
+                return self._call_openai(history, user_message, tool_results)
+            except Exception as openai_err:
+                return f"⚠️ OpenAI API error: {openai_err}", None
+
+        # Mock Mode when no live API keys are provided
+        logger.info("No live LLM API keys configured. Running in Mock/Deterministic mode.")
+        return self._call_mock(history, user_message, tool_results)
 
     def _call_google_genai(
+        self, history: List[Dict[str, str]], user_message: str, tool_results: Optional[List[Dict[str, Any]]], model_name: str = None
+    ) -> Tuple[Optional[str], Optional[List[Dict[str, Any]]]]:
+        from google.genai import types
+
+        model_name = model_name or self.gemini_model
+        contents = []
+        for h in history:
+            role = "user" if h["role"] == "user" else "model"
+            contents.append(types.Content(role=role, parts=[types.Part.from_text(text=h["content"])]))
+
+        if tool_results:
+            combined_text = f"User Request: {user_message}\nTool Execution Results: {json.dumps(tool_results)}"
+            tool_res_parts = [types.Part.from_text(text=combined_text)]
+            contents.append(types.Content(role="user", parts=tool_res_parts))
+        else:
+            contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_message)]))
+
+        config_kwargs = {
+            "system_instruction": SYSTEM_PROMPT,
+            "tools": [types.Tool(function_declarations=TOOL_SCHEMAS)],
+            "temperature": 0.2,
+        }
+        
+        if "3.8-flash" in model_name:
+            config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=1024)
+
+        config = types.GenerateContentConfig(**config_kwargs)
+
+        response = self.gemini_client.models.generate_content(
+            model=model_name,
+            contents=contents,
+            config=config,
+        )
+
+        tool_calls = []
+        if response.function_calls:
+            for fc in response.function_calls:
+                tool_calls.append({"name": fc.name, "arguments": dict(fc.args)})
+            return None, tool_calls
+
+        text_resp = response.text or "I have processed your request."
+        return text_resp, None
+
+    def _call_groq(
         self, history: List[Dict[str, str]], user_message: str, tool_results: Optional[List[Dict[str, Any]]]
     ) -> Tuple[Optional[str], Optional[List[Dict[str, Any]]]]:
-        try:
-            from google.genai import types
-            
-            # Format messages
-            contents = []
-            for h in history:
-                role = "user" if h["role"] == "user" else "model"
-                contents.append(types.Content(role=role, parts=[types.Part.from_text(text=h["content"])]))
-            
-            if tool_results:
-                tool_res_parts = [types.Part.from_text(text=f"Tool Execution Results: {json.dumps(tool_results)}")]
-                contents.append(types.Content(role="user", parts=tool_res_parts))
-            else:
-                contents.append(types.Content(role="user", parts=[types.Part.from_text(text=user_message)]))
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        for h in history:
+            messages.append({"role": h["role"], "content": h["content"]})
 
-            config = types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                tools=[types.Tool(function_declarations=TOOL_SCHEMAS)],
-                temperature=0.2,
-            )
+        if tool_results:
+            combined_text = f"User Request: {user_message}\nTool Execution Results: {json.dumps(tool_results)}"
+            messages.append({"role": "user", "content": combined_text})
+        else:
+            messages.append({"role": "user", "content": user_message})
 
-            model_to_use = (
-                os.getenv("GEMINI_MODEL")
-                or os.getenv("LLM_MODEL")
-                or getattr(settings, "GEMINI_MODEL", "gemini-3.6-flash")
-            )
-            response = self.client.models.generate_content(
-                model=model_to_use,
-                contents=contents,
-                config=config,
-            )
+        groq_tools = [{"type": "function", "function": schema} for schema in TOOL_SCHEMAS]
 
+        response = self.groq_client.chat.completions.create(
+            model=self.groq_model,
+            messages=messages,
+            tools=groq_tools,
+            tool_choice="auto",
+        )
 
-            tool_calls = []
-            if response.function_calls:
-                for fc in response.function_calls:
-                    tool_calls.append({"name": fc.name, "arguments": dict(fc.args)})
-                return None, tool_calls
+        choice = response.choices[0].message
+        if choice.tool_calls:
+            calls = []
+            for tc in choice.tool_calls:
+                calls.append({
+                    "name": tc.function.name,
+                    "arguments": json.loads(tc.function.arguments or "{}"),
+                })
+            return None, calls
 
-            text_resp = response.text or "I have processed your request."
-            return text_resp, None
-        except Exception as e:
-            logger.error(f"Google GenAI API call error: {e}")
-            return f"⚠️ Error calling AI model: {e}", None
+        return choice.content or "Done.", None
 
     def _call_openai(
         self, history: List[Dict[str, str]], user_message: str, tool_results: Optional[List[Dict[str, Any]]]
     ) -> Tuple[Optional[str], Optional[List[Dict[str, Any]]]]:
-        try:
-            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-            for h in history:
-                messages.append({"role": h["role"], "content": h["content"]})
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        for h in history:
+            messages.append({"role": h["role"], "content": h["content"]})
 
-            if tool_results:
-                messages.append({"role": "user", "content": f"Tool Execution Results: {json.dumps(tool_results)}"})
-            else:
-                messages.append({"role": "user", "content": user_message})
+        if tool_results:
+            combined_text = f"User Request: {user_message}\nTool Execution Results: {json.dumps(tool_results)}"
+            messages.append({"role": "user", "content": combined_text})
+        else:
+            messages.append({"role": "user", "content": user_message})
 
-            openai_tools = [{"type": "function", "function": schema} for schema in TOOL_SCHEMAS]
+        openai_tools = [{"type": "function", "function": schema} for schema in TOOL_SCHEMAS]
 
-            response = self.client.chat.completions.create(
-                model=self.model_name if "gpt" in self.model_name else "gpt-4o-mini",
-                messages=messages,
-                tools=openai_tools,
-                tool_choice="auto",
-            )
+        response = self.openai_client.chat.completions.create(
+            model=self.llm_model if "gpt" in self.llm_model else "gpt-4o-mini",
+            messages=messages,
+            tools=openai_tools,
+            tool_choice="auto",
+        )
 
-            choice = response.choices[0].message
-            if choice.tool_calls:
-                calls = []
-                for tc in choice.tool_calls:
-                    calls.append({
-                        "name": tc.function.name,
-                        "arguments": json.loads(tc.function.arguments or "{}"),
-                    })
-                return None, calls
+        choice = response.choices[0].message
+        if choice.tool_calls:
+            calls = []
+            for tc in choice.tool_calls:
+                calls.append({
+                    "name": tc.function.name,
+                    "arguments": json.loads(tc.function.arguments or "{}"),
+                })
+            return None, calls
 
-            return choice.content or "Done.", None
-        except Exception as e:
-            logger.error(f"OpenAI API call error: {e}")
-            return f"⚠️ Error calling AI model: {e}", None
+        return choice.content or "Done.", None
 
     def _call_mock(
         self, history: List[Dict[str, str]], user_message: str, tool_results: Optional[List[Dict[str, Any]]]
     ) -> Tuple[Optional[str], Optional[List[Dict[str, Any]]]]:
         """Mock fallback logic for deterministic unit testing without API keys."""
         if tool_results:
-            # Format tool result response
+            # Multi-item adding behavior: if we have search results, generate add_bill_item calls SEQUENTIALLY
+            if "add" in user_message.lower() and any(tr.get("name") == "search_products" and tr.get("status") == "success" for tr in tool_results):
+                found_products = []
+                for tr in tool_results:
+                    if tr.get("name") == "search_products" and tr.get("status") == "success":
+                        prods = tr.get("data", [])
+                        if isinstance(prods, list):
+                            found_products.extend(prods)
+                        else:
+                            found_products.append(prods)
+                
+                # Check which products have already been added in this session
+                added_product_ids = set()
+                for tr in tool_results:
+                    if tr.get("name") == "add_bill_item" and tr.get("status") == "success":
+                        added_product_ids.add(tr.get("data", {}).get("items", [-1])[-1].get("product_id"))
+                
+                qty_map = {
+                    "atta": 2.0, "salt": 1.0, "maggi": 3.0,
+                    "butter": 1.0, "oil": 1.0, "parle": 1.0,
+                    "surf": 1.0, "sugar": 1.0, "rice": 1.0, "dal": 1.0,
+                }
+                
+                import re
+                msg_l = user_message.lower()
+                
+                # Find the FIRST found product that hasn't been added yet, and add it
+                for prod in found_products:
+                    if prod["id"] in added_product_ids:
+                        continue
+                        
+                    pname = prod.get("name", "").lower()
+                    matched_key = None
+                    for key in qty_map:
+                        if key in pname:
+                            matched_key = key
+                            break
+                    if matched_key is None:
+                        continue
+                    
+                    qty = qty_map.get(matched_key, 1.0)
+                    pattern = rf'(\d+)[^\d]*?{re.escape(matched_key)}'
+                    matches = list(re.finditer(pattern, msg_l))
+                    if matches:
+                        qty = float(matches[-1].group(1))
+                        
+                    return None, [{"name": "add_bill_item", "arguments": {"bill_id": 1, "product_id": prod["id"], "quantity": qty}}]
+
             res_strs = []
             for tr in tool_results:
                 if tr.get("status") == "error":
@@ -167,13 +307,28 @@ class LLMClient:
 
         msg_lower = user_message.lower()
 
-        # Intent heuristic for Mock Mode only when no API key is set
+        # Multi-product add-to-bill: search ALL mentioned products in one turn
+        product_search_map = {
+            "atta": "Aashirvaad Atta 5kg",
+            "salt": "Tata Salt 1kg",
+            "maggi": "Maggi 70g",
+            "butter": "Amul Butter 100g",
+            "oil": "Fortune Sunflower Oil 1L",
+            "parle": "Parle-G",
+            "surf": "Surf Excel",
+        }
+        if "add" in msg_lower and "stock" not in msg_lower:
+            calls = []
+            for key, query in product_search_map.items():
+                if key in msg_lower:
+                    calls.append({"name": "search_products", "arguments": {"query": query}})
+            if calls:
+                return None, calls
+
         if "how much" in msg_lower and "atta" in msg_lower:
             return None, [{"name": "search_products", "arguments": {"query": "Aashirvaad Atta 5kg"}}]
         elif "add" in msg_lower and "maggi" in msg_lower and "stock" in msg_lower:
-            return None, [
-                {"name": "search_products", "arguments": {"query": "Maggi 70g"}},
-            ]
+            return None, [{"name": "search_products", "arguments": {"query": "Maggi 70g"}}]
         elif "low stock" in msg_lower or "running out" in msg_lower:
             return None, [{"name": "get_low_stock", "arguments": {}}]
         elif "make a bill" in msg_lower or "bill for" in msg_lower:
@@ -182,5 +337,7 @@ class LLMClient:
             return None, [{"name": "finalize_bill", "arguments": {"bill_id": 1, "payment_method": "UPI"}}]
         elif "owes" in msg_lower or "khata" in msg_lower:
             return None, [{"name": "get_customer", "arguments": {"name": "Ravi"}}]
+        elif "prefer" in msg_lower and "payment" in msg_lower:
+            return None, [{"name": "get_preference", "arguments": {"key": "default_payment_method"}}]
 
         return f"🤖 [Kirana Agent Response]: I understand you said '{user_message}'. How else can I assist with store operations?", None

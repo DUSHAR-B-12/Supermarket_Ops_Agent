@@ -154,3 +154,42 @@ async def test_production_billing_bug_fix(db_session):
     resp = await process_agent_message(user4, "make a bill and add 2 maggi", db_session)
     assert "DUPLICATE_CALL" not in resp
     assert "maggi" in resp.lower()
+
+@pytest.mark.asyncio
+async def test_direct_dispatcher_injection(db_session, monkeypatch):
+    """
+    Test 9: Bypass LLM to verify runner.py dispatcher injects active_bill_id correctly
+    and blocks if missing.
+    """
+    from app.agent.runner import SessionManager, process_agent_message
+    from app.agent.llm_client import LLMClient
+    
+    user = "u_dispatch_test"
+    SessionManager(db_session).reset_session(user)
+    
+    # Mock LLM to return exactly what we want
+    class MockBypassLLM(LLMClient):
+        def generate_completion(self, history, user_message, tool_results=None):
+            if "fail_test" in user_message:
+                return None, [{"name": "add_bill_item", "arguments": {"product_id": 5, "quantity": 2}}]
+            if "inject_test" in user_message:
+                return None, [{"name": "add_bill_item", "arguments": {"product_id": 2, "quantity": 2}}]
+            return "Done", None
+
+    monkeypatch.setattr("app.agent.runner.get_llm_client", lambda: MockBypassLLM())
+    
+    # 1. active_bill_id is None -> dispatcher MUST NOT call add_bill_item
+    resp = await process_agent_message(user, "fail_test", db_session)
+    assert "No active draft bill found" in resp
+    
+    # 2. active_bill_id = 123 -> dispatcher MUST inject 123
+    SessionManager(db_session).set_active_draft_bill(user, 1) # Must be valid bill ID in DB or FK fails, we use 1
+    
+    # We need a real bill 1 in the DB for the tool not to fail DB constraints, let's create it
+    from app.services.billing_service import BillingService
+    bill = BillingService(db_session).create_draft_bill()
+    SessionManager(db_session).set_active_draft_bill(user, bill.id)
+    
+    resp = await process_agent_message(user, "inject_test", db_session)
+    # The tool should succeed and return the summary
+    assert "Maggi" in resp or "Summary" in resp

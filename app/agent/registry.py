@@ -132,11 +132,11 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
         "parameters": {
             "type": "object",
             "properties": {
-                "bill_id": {"type": "integer"},
+                "bill_id": {"type": "integer", "description": "Leave empty to use the active draft bill."},
                 "product_id": {"type": "integer"},
                 "quantity": {"type": "number"},
             },
-            "required": ["bill_id", "product_id", "quantity"],
+            "required": ["product_id", "quantity"],
         },
     },
     {
@@ -145,11 +145,11 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
         "parameters": {
             "type": "object",
             "properties": {
-                "bill_id": {"type": "integer"},
+                "bill_id": {"type": "integer", "description": "Leave empty to use the active draft bill."},
                 "product_id": {"type": "integer"},
                 "new_quantity": {"type": "number"},
             },
-            "required": ["bill_id", "product_id", "new_quantity"],
+            "required": ["product_id", "new_quantity"],
         },
     },
     {
@@ -158,10 +158,10 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
         "parameters": {
             "type": "object",
             "properties": {
-                "bill_id": {"type": "integer"},
+                "bill_id": {"type": "integer", "description": "Leave empty to use the active draft bill."},
                 "product_id": {"type": "integer"},
             },
-            "required": ["bill_id", "product_id"],
+            "required": ["product_id"],
         },
     },
     {
@@ -170,9 +170,8 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
         "parameters": {
             "type": "object",
             "properties": {
-                "bill_id": {"type": "integer"}
+                "bill_id": {"type": "integer", "description": "Leave empty to use the active draft bill."}
             },
-            "required": ["bill_id"],
         },
     },
     {
@@ -181,9 +180,8 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
         "parameters": {
             "type": "object",
             "properties": {
-                "bill_id": {"type": "integer"}
+                "bill_id": {"type": "integer", "description": "Leave empty to use the active draft bill."}
             },
-            "required": ["bill_id"],
         },
     },
     {
@@ -192,13 +190,12 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
         "parameters": {
             "type": "object",
             "properties": {
-                "bill_id": {"type": "integer"},
+                "bill_id": {"type": "integer", "description": "Leave empty to use the active draft bill."},
                 "payment_method": {"type": "string", "enum": ["Cash", "UPI", "Card", "Khata"]},
                 "payment_reference": {"type": "string"},
                 "customer_id": {"type": "integer"},
                 "idempotency_key": {"type": "string"},
             },
-            "required": ["bill_id"],
         },
     },
     {

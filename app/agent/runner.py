@@ -43,7 +43,8 @@ def format_tool_response(tool_results: List[Dict[str, Any]]) -> str:
         error = tr.get("error")
 
         if status == "error":
-            replies.append(f"⚠️ {error}")
+            if "DUPLICATE_CALL" not in error:
+                replies.append(f"⚠️ {error}")
             continue
 
         if data is None:
@@ -218,8 +219,9 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
                     tool_name = call["name"]
                     arguments = call.get("arguments", {})
 
-                    if active_bill_id and "bill_id" in arguments and not arguments.get("bill_id"):
-                        arguments["bill_id"] = active_bill_id
+                    if active_bill_id and tool_name in ["add_bill_item", "edit_bill_item", "remove_bill_item", "finalize_bill", "calculate_bill", "get_bill", "generate_invoice_pdf"]:
+                        if not arguments.get("bill_id"):
+                            arguments["bill_id"] = active_bill_id
 
                     if tool_name in ["generate_invoice_pdf", "get_preference", "set_preference"]:
                         arguments["user_id"] = user_str

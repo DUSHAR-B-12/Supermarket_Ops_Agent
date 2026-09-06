@@ -1,6 +1,6 @@
 import pytest
 from sqlalchemy.orm import Session
-from app.agent.runner import process_agent_message
+from app.agent.runner import process_agent_message, reset_user_conversation
 from app.services.inventory_service import InventoryService
 from app.services.product_service import ProductService
 from app.services.billing_service import BillingService
@@ -107,3 +107,50 @@ async def test_reports_and_khata_semantics(db_session):
 async def test_preference_semantics(db_session):
     resp = await process_agent_message(123, "remember I prefer UPI", db_session)
     assert "preference" in resp.lower() or "saved" in resp.lower() or "set" in resp.lower()
+
+@pytest.mark.asyncio
+async def test_production_billing_bug_fix(db_session):
+    user = "u_prod_bug"
+    # Clean state
+    reset_user_conversation(user, db_session)
+    
+    # 1. Sequential calls to handle Mock LLM limitations
+    resp = await process_agent_message(user, "make a bill for hari", db_session)
+    assert "DUPLICATE_CALL" not in resp
+
+    resp = await process_agent_message(user, "add 2 maggi", db_session)
+    # Check duplicate call leak is NOT present
+    assert "DUPLICATE_CALL" not in resp
+    # Should say maggi added
+    assert "maggi" in resp.lower()
+
+    # Verify active draft is set
+    session_mgr = SessionManager(db_session)
+    active_id = session_mgr.get_active_draft_bill(user)
+    assert active_id is not None
+    
+    # 2. "make a bill for hari" then "add 2 maggi"
+    user2 = "u_prod_bug2"
+    reset_user_conversation(user2, db_session)
+    resp = await process_agent_message(user2, "make a bill for hari", db_session)
+    assert "DUPLICATE_CALL" not in resp
+    resp = await process_agent_message(user2, "add 2 maggi", db_session)
+    assert "DUPLICATE_CALL" not in resp
+    assert "maggi" in resp.lower()
+
+    # 3. complex edit flow
+    user3 = "u_prod_bug3"
+    reset_user_conversation(user3, db_session)
+    await process_agent_message(user3, "make a bill", db_session)
+    await process_agent_message(user3, "add 2 maggi", db_session)
+    resp = await process_agent_message(user3, "make maggi 3", db_session)
+    assert "DUPLICATE_CALL" not in resp
+    resp = await process_agent_message(user3, "remove maggi", db_session)
+    assert "DUPLICATE_CALL" not in resp
+
+    # 4. /new followed by "make a bill and add 2 maggi"
+    user4 = "u_prod_bug4"
+    reset_user_conversation(user4, db_session)
+    resp = await process_agent_message(user4, "make a bill and add 2 maggi", db_session)
+    assert "DUPLICATE_CALL" not in resp
+    assert "maggi" in resp.lower()

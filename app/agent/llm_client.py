@@ -311,7 +311,7 @@ class LLMClient:
                     if matches:
                         qty = float(matches[-1].group(1))
                         
-                    return None, [{"name": "add_bill_item", "arguments": {"bill_id": 1, "product_id": prod["id"], "quantity": qty}}]
+                    return None, [{"name": "add_bill_item", "arguments": {"product_id": prod["id"], "quantity": qty}}]
 
             # No more products to add — generate a natural-language summary from tool results
             from app.agent.runner import format_tool_response
@@ -382,7 +382,7 @@ class LLMClient:
         elif "make a bill" in msg_lower or "bill for" in msg_lower or "create bill" in msg_lower:
             return None, [{"name": "create_draft_bill", "arguments": {}}]
         elif "finalize" in msg_lower or "complete the bill" in msg_lower:
-            return None, [{"name": "finalize_bill", "arguments": {"bill_id": 1, "payment_method": "UPI"}}]
+            return None, [{"name": "finalize_bill", "arguments": {"payment_method": "UPI"}}]
         elif "owes" in msg_lower or "khata" in msg_lower:
             return None, [{"name": "get_customer", "arguments": {"name": "Ravi"}}]
         elif "prefer" in msg_lower or "remember" in msg_lower:
@@ -406,9 +406,9 @@ class LLMClient:
             match = _re.search(r'\b(find|search|do we sell|show|check)\s+(maggi|atta|salt|butter|oil|facewash)\b', msg_lower)
             return None, [{"name": "search_products", "arguments": {"query": match.group(2)}}]
         elif _re.search(r'\b(pdf|send invoice|generate receipt)\b', msg_lower):
-            return None, [{"name": "generate_invoice_pdf", "arguments": {"bill_id": 1}}]
+            return None, [{"name": "generate_invoice_pdf", "arguments": {}}]
         elif _re.search(r'\b(total|calculate)\b', msg_lower):
-            return None, [{"name": "calculate_bill", "arguments": {"bill_id": 1}}]
+            return None, [{"name": "calculate_bill", "arguments": {}}]
         elif _re.search(r'\b(paid|repayment|settle)\b', msg_lower):
              return None, [{"name": "record_khata_repayment", "arguments": {"customer_id": 1, "amount": 300.0}}]
 

@@ -24,7 +24,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     logger.info(f"Received /start command from user {user_info}")
 
     reply = (
-        "👋 *Welcome to Supermarket Ops Agent!*\n\n"
+        " *Welcome to Supermarket Ops Agent!*\n\n"
         "I am your AI-powered Kirana store operations assistant.\n"
         "Send me natural language requests (e.g. stock updates, billing, credit queries, PDF invoices, sales decks).\n\n"
         "Type `/new` anytime to start a fresh conversation session."
@@ -65,7 +65,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
         # Send text response
         if clean_text:
-            await update.message.reply_text(clean_text)
+            # Telegram has a 4096-character message limit
+            for i in range(0, len(clean_text), 4096):
+                await update.message.reply_text(clean_text[i:i+4096])
 
         # Send document attachments for generated artifacts
         for file_path in file_matches:
@@ -80,20 +82,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     except Exception as e:
         logger.error(f"Error processing Telegram message from user {user_id}: {e}", exc_info=True)
-        await update.message.reply_text(
-            "⚠️ An error occurred while processing your request. Please try again or type `/new` to reset."
-        )
+        try:
+            await update.message.reply_text(
+                "⚠️ An error occurred while processing your request. Please try again or type `/new` to reset."
+            )
+        except Exception:
+            logger.error("Failed to send error message to user.", exc_info=True)
 
 
 def create_telegram_app() -> Application:
-    """Factory to build python-telegram-bot Application instance."""
+    """Factory to build python-telegram-bot Application instance with appropriate timeouts."""
     if not settings.TELEGRAM_BOT_TOKEN or settings.TELEGRAM_BOT_TOKEN == "placeholder_bot_token":
         logger.warning(
             "TELEGRAM_BOT_TOKEN is not set or using default placeholder. "
             "Bot polling will fail unless a valid token is provided in .env."
         )
 
-    app = ApplicationBuilder().token(settings.TELEGRAM_BOT_TOKEN).build()
+    app = (
+        ApplicationBuilder()
+        .token(settings.TELEGRAM_BOT_TOKEN)
+        .connect_timeout(30.0)
+        .read_timeout(30.0)
+        .write_timeout(30.0)
+        .pool_timeout(30.0)
+        .build()
+    )
     app.add_handler(CommandHandler("start", start_command))
     app.add_handler(CommandHandler("new", new_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

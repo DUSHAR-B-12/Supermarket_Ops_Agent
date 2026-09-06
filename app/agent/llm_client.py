@@ -88,8 +88,14 @@ class LLMClient:
                     return self._call_google_genai(history, user_message, tool_results, model_name=model_name)
                 except Exception as gemini_err:
                     # We catch Exception here because the google.genai SDK exceptions (like APIError) inherit from Exception.
-                    # This ensures we fallback on rate limits, model unavailability, etc.
-                    logger.warning(f"Gemini model {model_name} failed with: {gemini_err}; trying next fallback if available")
+                    err_str = str(gemini_err).lower()
+                    is_quota = any(term in err_str for term in ["429", "resource_exhausted", "quota", "rate limit"])
+                    
+                    if is_quota:
+                        logger.warning(f"Gemini model {model_name} failed due to QUOTA/RATE LIMIT: {gemini_err}. Immediately trying next fallback.")
+                    else:
+                        logger.warning(f"Gemini model {model_name} failed with non-quota error: {gemini_err}; following existing fallback policy.")
+                    
                     last_gemini_err = gemini_err
             
             # If all Gemini models failed, fallback to Groq if configured
@@ -154,6 +160,9 @@ class LLMClient:
             "system_instruction": SYSTEM_PROMPT,
             "tools": [types.Tool(function_declarations=TOOL_SCHEMAS)],
             "temperature": 0.2,
+            "http_options": types.HttpOptions(
+                retry_options=types.HttpRetryOptions(attempts=1)
+            )
         }
         
         if "3.8-flash" in model_name:
@@ -297,13 +306,9 @@ class LLMClient:
                         
                     return None, [{"name": "add_bill_item", "arguments": {"bill_id": 1, "product_id": prod["id"], "quantity": qty}}]
 
-            res_strs = []
-            for tr in tool_results:
-                if tr.get("status") == "error":
-                    res_strs.append(f"❌ {tr.get('error')}")
-                else:
-                    res_strs.append(f"✅ Executed {tr.get('name')}: {json.dumps(tr.get('data'))}")
-            return "\n".join(res_strs), None
+            # No more products to add — generate a natural-language summary from tool results
+            from app.agent.runner import format_tool_response
+            return format_tool_response(tool_results), None
 
         msg_lower = user_message.lower()
 
@@ -325,11 +330,33 @@ class LLMClient:
             if calls:
                 return None, calls
 
-        if "how much" in msg_lower and "atta" in msg_lower:
-            return None, [{"name": "search_products", "arguments": {"query": "Aashirvaad Atta 5kg"}}]
-        elif "add" in msg_lower and "maggi" in msg_lower and "stock" in msg_lower:
-            return None, [{"name": "search_products", "arguments": {"query": "Maggi 70g"}}]
-        elif "low stock" in msg_lower or "running out" in msg_lower:
+        # Generic stock query: "How much X do I have?"
+        if "how much" in msg_lower:
+            # Extract the product name from the query
+            import re as _re
+            match = _re.search(r'how much\s+(.+?)\s+do\s+i\s+have', msg_lower)
+            if match:
+                query = match.group(1).strip()
+                return None, [{"name": "search_products", "arguments": {"query": query}}]
+            return None, [{"name": "search_products", "arguments": {"query": user_message}}]
+
+        # Stock receiving: "Add N X to stock"
+        if "add" in msg_lower and "stock" in msg_lower:
+            import re as _re
+            match = _re.search(r'add\s+(\d+)\s+(.+?)\s+to\s+stock', msg_lower)
+            if match:
+                query = match.group(2).strip()
+                return None, [{"name": "search_products", "arguments": {"query": query}}]
+
+        # Search queries: "Show me everything containing X" / "Show me all products with X"
+        if "show" in msg_lower and ("containing" in msg_lower or "product" in msg_lower):
+            import re as _re
+            match = _re.search(r'(?:containing|with|products?)\s+(.+?)[\.!?]?$', msg_lower)
+            if match:
+                query = match.group(1).strip()
+                return None, [{"name": "search_products", "arguments": {"query": query}}]
+
+        if "low stock" in msg_lower or "running out" in msg_lower or "reorder" in msg_lower:
             return None, [{"name": "get_low_stock", "arguments": {}}]
         elif "make a bill" in msg_lower or "bill for" in msg_lower:
             return None, [{"name": "create_draft_bill", "arguments": {}}]

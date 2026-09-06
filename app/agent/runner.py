@@ -23,8 +23,9 @@ def get_llm_client() -> LLMClient:
 
 def format_tool_response(tool_results: List[Dict[str, Any]]) -> str:
     """
-    Format tool execution results directly into a concise, shopkeeper-friendly
-    natural language response, saving extra LLM API calls.
+    Safety-net formatter: converts tool results into a readable response
+    when the LLM fails to generate a natural-language summary.
+    This is a FALLBACK — the primary path is LLM-generated text.
     """
     action_tools = {
         "add_bill_item", "edit_bill_item", "remove_bill_item",
@@ -45,9 +46,8 @@ def format_tool_response(tool_results: List[Dict[str, Any]]) -> str:
             replies.append(f"⚠️ {error}")
             continue
 
-        if not data:
-            replies.append(f"✅ Executed {tool_name} successfully.")
-            continue
+        if data is None:
+            continue  # Don't output anything for tools that returned no data
 
         # If an action tool succeeded, suppress intermediate search/lookup chatter unless error
         if has_action_tool and tool_name in ["search_products", "get_product", "get_customer"]:
@@ -147,13 +147,24 @@ def format_tool_response(tool_results: List[Dict[str, Any]]) -> str:
         else:
             replies.append(f"✅ Executed {tool_name}: {json.dumps(data)}")
 
+    if not replies:
+        return "I have processed your request."
     return "\n\n".join(replies)
+
+
+def _make_tool_cache_key(tool_name: str, arguments: Dict[str, Any]) -> str:
+    """Create a deterministic cache key from tool name + sorted arguments."""
+    sorted_args = json.dumps(arguments, sort_keys=True, default=str)
+    return f"{tool_name}::{sorted_args}"
 
 
 async def process_agent_message(user_id: int, message_text: str, db: Optional[Session] = None) -> str:
     """
-    Main Agent Orchestration Loop with API Quota Optimization:
-    Observe -> Reason -> Act (via LLM function calls) -> Format tool results.
+    Main Agent Orchestration Loop (ReAct pattern):
+    User message → LLM reasoning → tool execution → LLM consumes results → natural-language response.
+    
+    The LLM generates the final response from tool results.
+    format_tool_response() is used only as a safety fallback.
     """
     user_str = str(user_id)
     logger.info(f"Agent runner processing message for user_id={user_str}: '{message_text}'")
@@ -171,10 +182,16 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
 
         llm = get_llm_client()
         tool_results = None
+        all_tool_results = []  # Accumulate all tool results for fallback formatting
         turn_count = 0
-        max_turns = 15
+        max_turns = 10
         final_reply = ""
         generated_artifacts = []
+
+        # Duplicate tool call detection: cache of (tool_name, args) -> result
+        tool_call_cache: Dict[str, Dict[str, Any]] = {}
+        duplicate_count = 0
+        max_duplicates = 3  # After this many duplicates, force termination
 
         context_msg = message_text
         if active_bill_id:
@@ -202,8 +219,19 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
                     if tool_name in ["generate_invoice_pdf", "get_preference", "set_preference"]:
                         arguments["user_id"] = user_str
 
-                    res = execute_tool(db, tool_name, arguments)
-                    
+                    # --- Duplicate tool call detection ---
+                    cache_key = _make_tool_cache_key(tool_name, arguments)
+                    if cache_key in tool_call_cache:
+                        duplicate_count += 1
+                        logger.warning(
+                            f"Duplicate tool call detected (#{duplicate_count}): "
+                            f"{tool_name}({arguments}). Reusing cached result."
+                        )
+                        res = tool_call_cache[cache_key]
+                    else:
+                        res = execute_tool(db, tool_name, arguments)
+                        tool_call_cache[cache_key] = res
+
                     if tool_name == "create_draft_bill" and res.get("status") == "success":
                         new_bill_id = res["data"].get("bill_id")
                         if new_bill_id:
@@ -226,36 +254,36 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
                         "error": res.get("error"),
                     })
 
+                # Accumulate all results
                 if tool_results is None:
                     tool_results = []
                 tool_results.extend(step_results)
+                all_tool_results.extend(step_results)
 
-                # For action tools like add_bill_item, we must NOT break early because there might be more items to process.
-                # We only break early if a tool is unequivocally terminal (e.g., finalizes the transaction).
-                terminal_tools = {
-                    "create_draft_bill", "finalize_bill", "generate_invoice_pdf",
-                    "generate_analysis_deck", "record_khata_credit", "record_khata_repayment",
-                    "set_preference", "get_daily_close"
-                }
-                executed_tool_names = {c["name"] for c in tool_calls}
-
-                if not executed_tool_names.isdisjoint(terminal_tools):
-                    logger.info("Terminal tool executed. Breaking ReAct loop early.")
-                    final_reply = format_tool_response(tool_results)
+                # If too many duplicate calls, force termination
+                if duplicate_count >= max_duplicates:
+                    logger.warning(
+                        f"Exceeded max duplicate tool calls ({max_duplicates}). "
+                        f"Forcing loop termination with formatted results."
+                    )
+                    final_reply = format_tool_response(all_tool_results)
                     break
 
-                logger.info("Executed tools allow continuation. Continuing ReAct loop.")
+                # Continue the loop — feed results back to LLM for next turn
+                logger.info("Tool(s) executed. Feeding results back to LLM for synthesis.")
                 continue
 
+            # LLM returned text (no tool calls) — this is the final response
             if text_resp:
-                if tool_results:
-                    final_reply = format_tool_response(tool_results)
-                else:
-                    final_reply = text_resp
+                final_reply = text_resp
                 break
 
+        # Safety fallback if loop exhausted without a reply
         if not final_reply:
-            final_reply = "I have processed your request."
+            if all_tool_results:
+                final_reply = format_tool_response(all_tool_results)
+            else:
+                final_reply = "I have processed your request."
 
         # Append artifact tags if files were generated
         for artifact_path in generated_artifacts:

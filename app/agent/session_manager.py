@@ -42,9 +42,9 @@ class SessionManager:
         session = self.get_or_create_session(user_id)
         history: List[Dict[str, str]] = json.loads(session.conversation_history or "[]")
         history.append({"role": role, "content": content})
-        # Keep last 20 messages for context
-        if len(history) > 20:
-            history = history[-20:]
+        # Keep last 10 messages for context
+        if len(history) > 10:
+            history = history[-10:]
         session.conversation_history = json.dumps(history)
         self.db.commit()
 

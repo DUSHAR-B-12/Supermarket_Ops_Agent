@@ -20,7 +20,7 @@ class LLMClient:
         self.gemini_key = os.getenv("GEMINI_API_KEY") or getattr(settings, "GEMINI_API_KEY", "")
         self.gemini_model = (
             os.getenv("GEMINI_MODEL")
-            or getattr(settings, "GEMINI_MODEL", "gemini-3.8-flash")
+            or getattr(settings, "GEMINI_MODEL", "gemini-3.1-flash-lite")
         )
         
         fallback_str = os.getenv("GEMINI_FALLBACK_MODELS") or getattr(settings, "GEMINI_FALLBACK_MODELS", "")

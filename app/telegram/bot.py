@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import logging
 from telegram import Update
 from telegram.ext import (
@@ -46,6 +47,9 @@ async def new_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle normal incoming text messages from Telegram user."""
+    import time
+    telegram_receive_start = time.time()
+    
     if not update.message or not update.message.text:
         return
 
@@ -54,6 +58,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     username = f"@{user.username}" if user and user.username else "unknown"
     message_text = update.message.text.strip()
 
+    telegram_receive_ms = int((time.time() - telegram_receive_start) * 1000)
     logger.info(f"Incoming Telegram message from user {user_id} ({username}): '{message_text}'")
 
     try:
@@ -63,6 +68,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         file_matches = re.findall(r"\[FILE:\s*([^\]]+)\]", response_text)
         clean_text = re.sub(r"\[FILE:\s*([^\]]+)\]", "", response_text).strip()
 
+        telegram_send_start = time.time()
         # Send text response
         if clean_text:
             # Telegram has a 4096-character message limit
@@ -77,8 +83,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 with open(file_path, "rb") as doc_file:
                     filename = os.path.basename(file_path)
                     await update.message.reply_document(document=doc_file, filename=filename)
-            else:
-                logger.warning(f"Artifact file not found: {file_path}")
+        telegram_send_ms = int((time.time() - telegram_send_start) * 1000)
+        logger.info(f"TELEGRAM_STATS: {json.dumps({'receive_ms': telegram_receive_ms, 'send_ms': telegram_send_ms, 'total_ms': int((time.time() - telegram_receive_start) * 1000)})}")
 
     except Exception as e:
         logger.error(f"Error processing Telegram message from user {user_id}: {e}", exc_info=True)

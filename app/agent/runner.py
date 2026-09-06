@@ -166,6 +166,9 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
     The LLM generates the final response from tool results.
     format_tool_response() is used only as a safety fallback.
     """
+    import time
+    start_time = time.time()
+    stats = {"llm_ms": 0, "tool_ms": 0, "total_ms": 0}
     user_str = str(user_id)
     logger.info(f"Agent runner processing message for user_id={user_str}: '{message_text}'")
 
@@ -201,11 +204,13 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
             turn_count += 1
             logger.info(f"Execution turn {turn_count}/{max_turns} for user_id={user_str}")
 
+            llm_start = time.time()
             text_resp, tool_calls = llm.generate_completion(
                 history=history,
                 user_message=context_msg,
                 tool_results=tool_results,
             )
+            stats["llm_ms"] += int((time.time() - llm_start) * 1000)
 
             if tool_calls:
                 step_results = []
@@ -221,6 +226,7 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
 
                     # --- Duplicate tool call detection ---
                     cache_key = _make_tool_cache_key(tool_name, arguments)
+                    tool_start = time.time()
                     if cache_key in tool_call_cache:
                         duplicate_count += 1
                         logger.warning(
@@ -231,6 +237,7 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
                     else:
                         res = execute_tool(db, tool_name, arguments)
                         tool_call_cache[cache_key] = res
+                    stats["tool_ms"] += int((time.time() - tool_start) * 1000)
 
                     if tool_name == "create_draft_bill" and res.get("status") == "success":
                         new_bill_id = res["data"].get("bill_id")
@@ -294,6 +301,8 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
         session_mgr.add_message(user_str, "assistant", final_reply)
 
         logger.info(f"Agent finished processing for user_id={user_str}. Reply length={len(final_reply)}")
+        stats["total_ms"] = int((time.time() - start_time) * 1000)
+        logger.info(f"LATENCY_STATS: {json.dumps(stats)}")
         return final_reply
     finally:
         if close_session:

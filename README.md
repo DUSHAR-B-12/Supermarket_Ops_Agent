@@ -3,7 +3,7 @@
 An autonomous, conversational AI agent that runs an entire Indian kirana store end-to-end via Telegram, powered by LLM tool orchestration.
 
 ## Live Bot
-**@GreenBasketOpsBot**  *(Replace with actual deployed handle)*
+**@SuperMarket_All_in_one_Bot**  
 
 ## Architecture
 The application runs as a lightweight, stateful backend bridging a Telegram interface to an LLM.

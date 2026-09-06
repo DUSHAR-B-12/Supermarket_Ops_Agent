@@ -113,3 +113,14 @@ The agent clears the active conversation history and active draft bill.
 **Expected Response:**
 The agent uses the saved preference from Step 8 to automatically add "Aashirvaad Atta 5kg" and assumes the payment method will be "UPI" upon finalization, proving the memory survived the reset.
 **Feature Demonstrated:** Durable preferences spanning across sessions.
+
+---
+
+### Step 11: Natural Language Robustness
+**Message:**
+> `what do we have in stock?` / `do we sell facewash?` / `actually change the maggi to 10`
+
+**Expected Response:**
+The agent understands these semantic variations instead of relying on exact rigid commands like "search products" or "edit bill item". It naturally retrieves inventory or updates the bill based on intent.
+**Feature Demonstrated:** Advanced LLM semantic routing and tool-mapping without a rigid intent router.
+

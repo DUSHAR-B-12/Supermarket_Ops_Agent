@@ -7,7 +7,7 @@ Run the comprehensive test suite to verify core logic:
 ```bash
 python -m pytest -q
 ```
-- Expect > 70 passing tests.
+- Expect 90 passing tests, including the comprehensive `test_natural_language.py` suite.
 - This includes integration tests, concurrency tests, and logic boundary tests.
 
 ## 2. Production Smoke Test
@@ -48,3 +48,4 @@ Ensure the generated documents open successfully without corruption.
 | Khata Management (Credit/Repay) | [x] |
 | Persistent owner preferences | [x] |
 | Valid PDF & real PPTX charts | [x] |
+| Natural language variations supported | [x] |

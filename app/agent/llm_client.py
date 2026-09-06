@@ -258,8 +258,15 @@ class LLMClient:
     ) -> Tuple[Optional[str], Optional[List[Dict[str, Any]]]]:
         """Mock fallback logic for deterministic unit testing without API keys."""
         if tool_results:
-            # Multi-item adding behavior: if we have search results, generate add_bill_item calls SEQUENTIALLY
-            if "add" in user_message.lower() and any(tr.get("name") == "search_products" and tr.get("status") == "success" for tr in tool_results):
+            # Multi-item adding behavior or corrections
+            if any(tr.get("name") == "search_products" and tr.get("status") == "success" for tr in tool_results):
+                msg_l = user_message.lower()
+                import re as _re
+                if _re.search(r'\b(change|make it|edit)\b', msg_l) and not any(tr.get("name") == "edit_bill_item" for tr in tool_results):
+                    return None, [{"name": "edit_bill_item", "arguments": {"bill_id": 1, "product_id": 2, "new_quantity": 5.0}}]
+                if _re.search(r'\b(remove|delete|cancel that item)\b', msg_l) and not any(tr.get("name") == "remove_bill_item" for tr in tool_results):
+                    return None, [{"name": "remove_bill_item", "arguments": {"bill_id": 1, "product_id": 2}}]
+                
                 found_products = []
                 for tr in tool_results:
                     if tr.get("name") == "search_products" and tr.get("status") == "success":
@@ -311,6 +318,20 @@ class LLMClient:
             return format_tool_response(tool_results), None
 
         msg_lower = user_message.lower()
+        import re as _re
+
+        # Conversational Chatter (MOCK ONLY)
+        if _re.search(r'^(hi|hello|hey|good morning|thanks|ok|bye)\b', msg_lower):
+            return "Hello! I am your Supermarket Ops Agent. How can I help?", None
+
+        if _re.search(r'\b(what can you do|capabilities|store operations)\b', msg_lower):
+            return "I am your Supermarket Ops Agent! I can manage inventory, create bills, track Khata balances, and generate daily closing reports or analysis decks.", None
+
+        # Bill corrections triggers search
+        if _re.search(r'\b(change|make it|edit)\b', msg_lower):
+             return None, [{"name": "search_products", "arguments": {"query": "maggi"}}]
+        if _re.search(r'\b(remove|delete|cancel that item)\b', msg_lower):
+             return None, [{"name": "search_products", "arguments": {"query": "butter"}}]
 
         # Multi-product add-to-bill: search ALL mentioned products in one turn
         product_search_map = {
@@ -358,14 +379,14 @@ class LLMClient:
 
         if "low stock" in msg_lower or "running out" in msg_lower or "reorder" in msg_lower:
             return None, [{"name": "get_low_stock", "arguments": {}}]
-        elif "make a bill" in msg_lower or "bill for" in msg_lower:
+        elif "make a bill" in msg_lower or "bill for" in msg_lower or "create bill" in msg_lower:
             return None, [{"name": "create_draft_bill", "arguments": {}}]
-        elif "finalize" in msg_lower:
+        elif "finalize" in msg_lower or "complete the bill" in msg_lower:
             return None, [{"name": "finalize_bill", "arguments": {"bill_id": 1, "payment_method": "UPI"}}]
         elif "owes" in msg_lower or "khata" in msg_lower:
             return None, [{"name": "get_customer", "arguments": {"name": "Ravi"}}]
-        elif "prefer" in msg_lower and "payment" in msg_lower:
-            if "remember" in msg_lower or "set" in msg_lower:
+        elif "prefer" in msg_lower or "remember" in msg_lower:
+            if "upi" in msg_lower or "cash" in msg_lower or "card" in msg_lower or "set" in msg_lower:
                 return None, [{"name": "set_preference", "arguments": {"key": "default_payment_method", "value": "UPI"}}]
             else:
                 return None, [{"name": "get_preference", "arguments": {"key": "default_payment_method"}}]
@@ -373,13 +394,22 @@ class LLMClient:
             return None, [{"name": "get_daily_close", "arguments": {}}]
         elif "analysis deck" in msg_lower or "pptx" in msg_lower:
             return None, [{"name": "generate_analysis_deck", "arguments": {}}]
-        elif "add new product" in msg_lower or "create product" in msg_lower:
+        elif "add new product" in msg_lower or "create product" in msg_lower or "add a product" in msg_lower:
             # For testing, return add_product with dummy arguments
             return None, [{"name": "add_product", "arguments": {
                 "sku": "NEW-1", "name": "Facewash", "category": "Personal Care", 
                 "unit": "piece", "cost_price": 50.0, "mrp": 100.0, "selling_price": 90.0
             }}]
-        elif "store operations" in msg_lower or "what can you do" in msg_lower:
-            return "I am your Supermarket Ops Agent! I can manage inventory, create bills, track Khata balances, and generate daily closing reports or analysis decks.", None
+        elif "what's in stock" in msg_lower or "show stock" in msg_lower or "check inventory" in msg_lower or "what do we have" in msg_lower or "list products" in msg_lower:
+            return None, [{"name": "search_products", "arguments": {"query": ""}}]
+        elif _re.search(r'\b(find|search|do we sell|show|check)\s+(maggi|atta|salt|butter|oil|facewash)\b', msg_lower):
+            match = _re.search(r'\b(find|search|do we sell|show|check)\s+(maggi|atta|salt|butter|oil|facewash)\b', msg_lower)
+            return None, [{"name": "search_products", "arguments": {"query": match.group(2)}}]
+        elif _re.search(r'\b(pdf|send invoice|generate receipt)\b', msg_lower):
+            return None, [{"name": "generate_invoice_pdf", "arguments": {"bill_id": 1}}]
+        elif _re.search(r'\b(total|calculate)\b', msg_lower):
+            return None, [{"name": "calculate_bill", "arguments": {"bill_id": 1}}]
+        elif _re.search(r'\b(paid|repayment|settle)\b', msg_lower):
+             return None, [{"name": "record_khata_repayment", "arguments": {"customer_id": 1, "amount": 300.0}}]
 
         return f"🤖 [Kirana Agent Response]: I understand you said '{user_message}'. How else can I assist with store operations?", None

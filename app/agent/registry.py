@@ -41,7 +41,7 @@ TOOL_MAP: Dict[str, Callable[..., Any]] = {
 TOOL_SCHEMAS: List[Dict[str, Any]] = [
     {
         "name": "search_products",
-        "description": "Search product catalog by name, SKU, or category.",
+        "description": "Search product catalog to find what's in stock, verify existence, or get product IDs. Call this when the user asks 'do we have maggi', 'what's available', 'show stock', or before adding items to a bill.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -63,7 +63,7 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
     },
     {
         "name": "add_product",
-        "description": "Add a new product to the supermarket catalog.",
+        "description": "Add a brand NEW product to the supermarket catalog. Do NOT call this to restock an existing item (use receive_stock instead). You MUST collect sku, name, category, unit, cost_price, mrp, selling_price from the user before calling.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -85,7 +85,7 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
     },
     {
         "name": "receive_stock",
-        "description": "Record received stock arrival for a product. Increases inventory quantity.",
+        "description": "Record received stock arrival for an EXISTING product. Increases inventory quantity. Call this when the user says 'we received 20 maggi', 'got 50 salt', or 'added stock'.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -98,7 +98,7 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
     },
     {
         "name": "get_stock",
-        "description": "Get current available stock quantity for a product ID.",
+        "description": "Get current available stock quantity for a product ID. Use search_products if you only know the name.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -117,7 +117,7 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
     },
     {
         "name": "create_draft_bill",
-        "description": "Create a new draft bill for a customer. Does NOT reduce inventory.",
+        "description": "Create a new draft bill. Call this when the user says 'make a bill', 'start a bill', 'bill 2 maggi'. Does NOT reduce inventory.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -288,7 +288,7 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
     },
     {
         "name": "get_daily_close",
-        "description": "Calculate daily close business summary (sales, bill count, payment breakdown, GST, top items, low stock, Khata).",
+        "description": "Calculate daily close / end of day business summary (sales, bill count, payment breakdown, Khata). Call this when asked for 'today's close', 'EOD', 'what happened today'.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -301,7 +301,7 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
     },
     {
         "name": "generate_analysis_deck",
-        "description": "Generate a 6-slide PowerPoint (.pptx) sales analysis deck with charts and store metrics.",
+        "description": "Generate a PowerPoint (.pptx) sales analysis deck. Call this when asked for 'analysis deck', 'presentation', 'PPTX', 'sales presentation'.",
         "parameters": {
             "type": "object",
             "properties": {

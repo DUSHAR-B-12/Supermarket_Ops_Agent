@@ -54,11 +54,11 @@ python run.py
 ```
 
 ## Tests
-The suite contains 79 tests (including LLM mocking, concurrency, and Telegram handler tests).
+The suite contains 90 tests (including LLM mocking, concurrency, Telegram handler tests, and extensive natural language semantics).
 ```bash
 python -m pytest -q
 ```
-Result: `79 passed`
+Result: `90 passed`
 
 ## Demo
 A step-by-step 4-minute demonstration script of the bot's capabilities (Multi-item billing, Khata, PDF/PPTX generation, etc.) can be found in [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md).

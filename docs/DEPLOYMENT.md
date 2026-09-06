@@ -23,7 +23,32 @@ Before starting the bot, ensure the following environment variables are securely
 The default database location is `./data/supermarket.db`. 
 When deploying using Docker, you **must** mount a volume to the `/app/data` directory to ensure data survives container restarts.
 
-## 3. Deployment using Docker (Recommended)
+## 3. Deployment using Railway.app (Easiest Cloud Option)
+
+Railway is an excellent platform for this bot because it supports persistent volumes out-of-the-box.
+
+### Option A: Manual UI Deployment (via GitHub)
+1. Push your latest code to your GitHub repository.
+2. Go to [Railway.app](https://railway.app) and click **New Project** -> **Deploy from GitHub repo**.
+3. Select your `Supermarket_Ops_Agent` repository. Railway will detect the `Dockerfile` automatically.
+4. **Important**: Before the first deployment finishes, go to the **Settings** of your service.
+5. Go to the **Volumes** section and click **Add Volume**.
+6. Set the Mount Path to `/app/data`. (This is where SQLite will save `supermarket.db`).
+7. Go to the **Variables** tab and add your required secrets:
+   - `TELEGRAM_BOT_TOKEN`
+   - `GEMINI_API_KEY`
+   - `GROQ_API_KEY`
+8. Restart/Deploy the service. The bot will now run continuously in the background using long-polling. Railway won't terminate it for not having a web port, because it detects it as a background worker.
+
+### Option B: Deployment via Railway CLI
+If you prefer deploying directly from your terminal:
+1. Ensure the Railway CLI is installed (I've installed it for you, or run `npm i -g @railway/cli`).
+2. Run `railway login` in your terminal to authenticate.
+3. Run `railway link` and select your project.
+4. Run `railway volume add` and map it to `/app/data`.
+5. Run `railway up` to push your code and deploy.
+
+## 4. Deployment using Docker (Local/VPS)
 
 1. **Build the image**:
    ```bash
@@ -35,14 +60,14 @@ When deploying using Docker, you **must** mount a volume to the `/app/data` dire
    docker run -d \
      --name supermarket-bot \
      --restart unless-stopped \
-     -v $(pwd)/supermarket_data:/app/data \
+     -v $(pwd)/data:/app/data \
      -e TELEGRAM_BOT_TOKEN="your_token_here" \
      -e GEMINI_API_KEY="your_gemini_key_here" \
      -e GROQ_API_KEY="your_groq_key_here" \
      supermarket-ops-agent
    ```
 
-## 4. Deployment using Bare-Metal / VPS (Ubuntu/Debian)
+## 5. Deployment using Bare-Metal / VPS (Ubuntu/Debian)
 
 If you prefer to run it directly on a Linux server without Docker:
 
@@ -79,21 +104,17 @@ sudo systemctl enable supermarketbot
 sudo systemctl start supermarketbot
 ```
 
-## 5. Verification & Checking Logs
+## 6. Verification & Checking Logs
 
 - **Verify Telegram Connectivity**: Open Telegram and send `/start` or `hello` to your bot. If it replies, the webhook/polling loop is active.
-- **Check Docker Logs**:
-  ```bash
-  docker logs -f supermarket-bot
-  ```
-- **Check Systemd Logs**:
-  ```bash
-  journalctl -u supermarketbot -f
-  ```
+- **Check Railway Logs**: Click the "View Logs" button on your Railway dashboard.
+- **Check Docker Logs**: `docker logs -f supermarket-bot`
+- **Check Systemd Logs**: `journalctl -u supermarketbot -f`
 
-## 6. Graceful Shutdown & Restarts
+## 7. Graceful Shutdown & Restarts
 
 The bot's underlying `python-telegram-bot` application is configured to handle SIGINT and SIGTERM gracefully. 
+- To restart on Railway: Click "Restart" in the UI.
 - To restart via Docker: `docker restart supermarket-bot`
 - To restart via systemd: `sudo systemctl restart supermarketbot`
 The bot will finish processing current updates before shutting down.

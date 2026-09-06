@@ -42,6 +42,8 @@ data/*.db
 # Artifacts output (PDFs, PPTXs generated at runtime)
 app/artifacts/invoices/
 app/artifacts/decks/
+data/invoices/
+data/decks/
 
 # Pytest
 .pytest_cache/

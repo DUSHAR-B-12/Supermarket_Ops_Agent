@@ -5,6 +5,8 @@ FROM python:3.10-slim
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV APP_HOME=/app
+# Force absolute database path — Railway Volume must be mounted at /app/data
+ENV DATABASE_URL=sqlite:////app/data/supermarket.db
 
 # Create application directory
 WORKDIR $APP_HOME

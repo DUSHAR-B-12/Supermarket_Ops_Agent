@@ -11,14 +11,33 @@ from app.config.settings import settings
 
 
 def generate_invoice_pdf(
-    db: Session, bill_id: Optional[int] = None, user_id: Optional[str] = None
+    db: Session, bill_id: Optional[int] = None, bill_number: Optional[str] = None, user_id: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Generate PDF invoice for a finalized bill."""
+    """Generate PDF invoice for a finalized bill.
+    
+    Resolution priority:
+    1. bill_number (string like 'INV-20260906125214-B06D')
+    2. bill_id (internal numeric ID)
+    3. Most recently finalized bill (fallback)
+    """
+    import os
+
     bill = None
-    if bill_id:
+
+    # 1. Resolve by bill_number string
+    if bill_number:
+        bill = db.query(Bill).filter(Bill.bill_number == bill_number).first()
+        if not bill:
+            raise ValueError(f"No bill found with number '{bill_number}'. Please check and try again.")
+
+    # 2. Resolve by internal numeric ID
+    if not bill and bill_id:
         bill = db.query(Bill).filter(Bill.id == bill_id).first()
-    else:
-        # Get latest finalized bill
+        if not bill:
+            raise ValueError(f"No bill found with ID {bill_id}.")
+
+    # 3. Fallback: most recently finalized bill
+    if not bill:
         bill = (
             db.query(Bill)
             .filter(Bill.status == BillStatus.FINALIZED)
@@ -39,7 +58,9 @@ def generate_invoice_pdf(
         if pref:
             shop_name = pref
 
-    pdf_path = generate_pdf_invoice(bill, shop_name=shop_name)
+    # Generate PDF into persistent data directory
+    output_dir = os.path.join(settings.data_dir, "invoices")
+    pdf_path = generate_pdf_invoice(bill, shop_name=shop_name, output_dir=output_dir)
     return {
         "bill_id": bill.id,
         "bill_number": bill.bill_number,
@@ -66,8 +87,10 @@ def get_daily_close(db: Session, date_str: Optional[str] = None) -> Dict[str, An
 
 def generate_analysis_deck(db: Session, date_str: Optional[str] = None) -> Dict[str, Any]:
     """Generate PPTX sales analysis presentation deck."""
+    import os
     summary = get_daily_close(db, date_str)
-    pptx_path = generate_analysis_deck_pptx(summary)
+    output_dir = os.path.join(settings.data_dir, "decks")
+    pptx_path = generate_analysis_deck_pptx(summary, output_dir=output_dir)
     return {
         "date": summary["date"],
         "total_sales": summary["total_sales"],

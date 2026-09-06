@@ -274,11 +274,12 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
     },
     {
         "name": "generate_invoice_pdf",
-        "description": "Generate a GST-compliant PDF invoice document for a finalized bill.",
+        "description": "Generate a GST-compliant PDF invoice document for a finalized bill. Call this when the user asks for 'invoice', 'PDF', 'receipt', or 'bill copy'. If no bill_id or bill_number is provided, automatically uses the most recently finalized bill.",
         "parameters": {
             "type": "object",
             "properties": {
-                "bill_id": {"type": "integer", "description": "Bill ID to generate PDF for (optional)"},
+                "bill_id": {"type": "integer", "description": "Internal numeric bill ID (optional)"},
+                "bill_number": {"type": "string", "description": "Bill number string like 'INV-20260906125214-B06D' (optional)"},
                 "user_id": {"type": "string"},
             },
         },

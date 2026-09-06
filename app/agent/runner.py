@@ -43,7 +43,7 @@ def format_tool_response(tool_results: List[Dict[str, Any]]) -> str:
         error = tr.get("error")
 
         if status == "error":
-            if "DUPLICATE_CALL" not in error:
+            if "DUPLICATE_CALL" not in error and "SYSTEM_ERROR" not in error:
                 replies.append(f"⚠️ {error}")
             continue
 
@@ -223,32 +223,23 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
                     
                     raw_args = dict(arguments)
                     
+                    # Track if we should skip execution due to missing bill_id
+                    skip_execution_error = None
+                    
                     if tool_name in billing_tools:
                         if active_bill_id:
                             if not arguments.get("bill_id"):
                                 arguments["bill_id"] = active_bill_id
                         elif not arguments.get("bill_id") and tool_name != "get_bill":
                             # The LLM omitted bill_id but there is NO active_bill_id.
-                            # We must NOT call the underlying tool, otherwise it raises TypeError.
-                            res = {
-                                "status": "error",
-                                "error": f"No active draft bill found. You must call 'create_draft_bill' to start a bill before calling '{tool_name}'."
-                            }
-                            step_results.append({
-                                "name": tool_name,
-                                "status": res.get("status"),
-                                "data": None,
-                                "error": res.get("error"),
-                            })
-                            continue
+                            skip_execution_error = f"SYSTEM_ERROR: You cannot call '{tool_name}' because there is no active bill. STOP calling '{tool_name}'. You MUST call 'create_draft_bill' FIRST to create a bill."
 
                     if tool_name in ["generate_invoice_pdf", "get_preference", "set_preference"]:
                         arguments["user_id"] = user_str
 
-                    print(f"TOOL_DISPATCH tool={tool_name}\nraw_args={raw_args}\nactive_bill_id={active_bill_id}\nfinal_args={arguments}")
-
                     cache_key = _make_tool_cache_key(tool_name, arguments)
                     tool_start = time.time()
+                    
                     if cache_key in tool_call_cache:
                         duplicate_count += 1
                         logger.warning(
@@ -260,7 +251,13 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
                             "error": "DUPLICATE_CALL: You already executed this exact tool with these arguments. Do NOT repeat it. Read the previous results or synthesize a final response."
                         }
                     else:
-                        res = execute_tool(db, tool_name, arguments)
+                        if skip_execution_error:
+                            res = {
+                                "status": "error",
+                                "error": skip_execution_error
+                            }
+                        else:
+                            res = execute_tool(db, tool_name, arguments)
                         tool_call_cache[cache_key] = res
                     stats["tool_ms"] += int((time.time() - tool_start) * 1000)
 

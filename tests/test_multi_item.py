@@ -13,7 +13,7 @@ async def test_multi_item_billing(db_session):
     # Give user a draft bill
     draft_res = create_draft_bill(db_session)
     bill_id = draft_res["bill_id"]
-    SessionManager(db_session).set_active_draft_bill("user100", bill_id)
+    SessionManager(db_session).set_active_draft_bill("100", bill_id)
     
     # Message to add multiple items
     reply = await process_agent_message(100, "Add 2 Tata Salt 1kg, 3 Maggi 70g, and 1 Amul Butter 100g", db=db_session)
@@ -45,7 +45,7 @@ async def test_sequential_multi_item_billing_preserves_third_call(db_session):
     
     draft_res = create_draft_bill(db_session)
     bill_id = draft_res["bill_id"]
-    SessionManager(db_session).set_active_draft_bill("user101", bill_id)
+    SessionManager(db_session).set_active_draft_bill("101", bill_id)
     
     # Message to add 3 items sequentially via the mock LLM
     await process_agent_message(101, "Add 1 Tata Salt 1kg, 2 Maggi 70g, 3 Amul Butter 100g", db=db_session)

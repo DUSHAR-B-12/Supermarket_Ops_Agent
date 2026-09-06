@@ -219,7 +219,7 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
                     tool_name = call["name"]
                     arguments = call.get("arguments", {})
 
-                    billing_tools = ["add_bill_item", "edit_bill_item", "remove_bill_item", "finalize_bill", "calculate_bill", "get_bill", "generate_invoice_pdf"]
+                    billing_tools = ["add_bill_item", "edit_bill_item", "remove_bill_item", "finalize_bill", "calculate_bill", "get_bill"]
                     
                     raw_args = dict(arguments)
                     

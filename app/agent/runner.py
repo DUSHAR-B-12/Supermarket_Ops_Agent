@@ -224,20 +224,31 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
                     if tool_name in ["generate_invoice_pdf", "get_preference", "set_preference"]:
                         arguments["user_id"] = user_str
 
-                    # --- Duplicate tool call detection ---
                     cache_key = _make_tool_cache_key(tool_name, arguments)
                     tool_start = time.time()
                     if cache_key in tool_call_cache:
                         duplicate_count += 1
                         logger.warning(
                             f"Duplicate tool call detected (#{duplicate_count}): "
-                            f"{tool_name}({arguments}). Reusing cached result."
+                            f"{tool_name}({arguments})."
                         )
-                        res = tool_call_cache[cache_key]
+                        res = {
+                            "status": "error", 
+                            "error": "DUPLICATE_CALL: You already executed this exact tool with these arguments. Do NOT repeat it. Read the previous results or synthesize a final response."
+                        }
                     else:
                         res = execute_tool(db, tool_name, arguments)
                         tool_call_cache[cache_key] = res
                     stats["tool_ms"] += int((time.time() - tool_start) * 1000)
+
+                    # Stale Bill Recovery
+                    if res.get("status") == "error":
+                        err_msg = res.get("error", "").lower()
+                        if "bill" in err_msg and ("not found" in err_msg or "not in 'draft'" in err_msg or "not a draft" in err_msg or "cancelled" in err_msg):
+                            logger.warning(f"Stale active_bill_id detected for {user_str}. Clearing.")
+                            session_mgr.set_active_draft_bill(user_str, None)
+                            active_bill_id = None
+                            res["error"] += " (System Note: The stale bill ID has been cleared from your active session. You must create a new draft bill.)"
 
                     if tool_name == "create_draft_bill" and res.get("status") == "success":
                         new_bill_id = res["data"].get("bill_id")
@@ -278,6 +289,11 @@ async def process_agent_message(user_id: int, message_text: str, db: Optional[Se
 
                 # Continue the loop — feed results back to LLM for next turn
                 logger.info("Tool(s) executed. Feeding results back to LLM for synthesis.")
+                
+                # Append the intermediate tool results to history so the LLM remembers it called them
+                # This ensures the LLM sees its own actions in context on multi-turn ReAct loops.
+                history.append({"role": "model", "content": f"I called tools: {json.dumps(tool_calls)}"})
+                history.append({"role": "user", "content": f"Tool Results: {json.dumps(step_results)}"})
                 continue
 
             # LLM returned text (no tool calls) — this is the final response

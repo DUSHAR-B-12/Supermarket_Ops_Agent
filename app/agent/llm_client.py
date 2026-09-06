@@ -365,6 +365,21 @@ class LLMClient:
         elif "owes" in msg_lower or "khata" in msg_lower:
             return None, [{"name": "get_customer", "arguments": {"name": "Ravi"}}]
         elif "prefer" in msg_lower and "payment" in msg_lower:
-            return None, [{"name": "get_preference", "arguments": {"key": "default_payment_method"}}]
+            if "remember" in msg_lower or "set" in msg_lower:
+                return None, [{"name": "set_preference", "arguments": {"key": "default_payment_method", "value": "UPI"}}]
+            else:
+                return None, [{"name": "get_preference", "arguments": {"key": "default_payment_method"}}]
+        elif "today's close" in msg_lower or "daily close" in msg_lower:
+            return None, [{"name": "get_daily_close", "arguments": {}}]
+        elif "analysis deck" in msg_lower or "pptx" in msg_lower:
+            return None, [{"name": "generate_analysis_deck", "arguments": {}}]
+        elif "add new product" in msg_lower or "create product" in msg_lower:
+            # For testing, return add_product with dummy arguments
+            return None, [{"name": "add_product", "arguments": {
+                "sku": "NEW-1", "name": "Facewash", "category": "Personal Care", 
+                "unit": "piece", "cost_price": 50.0, "mrp": 100.0, "selling_price": 90.0
+            }}]
+        elif "store operations" in msg_lower or "what can you do" in msg_lower:
+            return "I am your Supermarket Ops Agent! I can manage inventory, create bills, track Khata balances, and generate daily closing reports or analysis decks.", None
 
         return f"🤖 [Kirana Agent Response]: I understand you said '{user_message}'. How else can I assist with store operations?", None

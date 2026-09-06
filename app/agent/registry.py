@@ -257,7 +257,7 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "user_id": {"type": "string", "description": "Automatically injected, leave blank."},
-                "key": {"type": "string"},
+                "key": {"type": "string", "description": "Preference key (e.g., 'default_payment_method', 'shop_name')"},
             },
             "required": ["key"],
         },
@@ -269,7 +269,7 @@ TOOL_SCHEMAS: List[Dict[str, Any]] = [
             "type": "object",
             "properties": {
                 "user_id": {"type": "string", "description": "Automatically injected, leave blank."},
-                "key": {"type": "string"},
+                "key": {"type": "string", "description": "Preference key (e.g., 'default_payment_method', 'shop_name')"},
                 "value": {"type": "string"},
             },
             "required": ["key", "value"],

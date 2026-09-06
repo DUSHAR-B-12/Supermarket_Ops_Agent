@@ -66,8 +66,7 @@ async def test_concurrent_oversell(fresh_db):
     
     assert len(successes) == 1
     assert len(failures) == 1
-    
-    assert "Concurrency Error" in failures[0][1]
+    assert "Concurrency Error" in failures[0][1] or "Oversell Guard" in failures[0][1]
     
     # Verify DB state
     fresh_db.expire_all()

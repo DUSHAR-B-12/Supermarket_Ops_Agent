@@ -1,0 +1,26 @@
+# Virtual environments
+.env
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local Database
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+
+# Outputs
+outputs/*.pdf
+outputs/*.pptx
+
+# Tests & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Git
+.git/
+.gitignore

@@ -21,6 +21,24 @@ def search_products(db: Session, query: str) -> List[Dict[str, Any]]:
         for p in products
     ]
 
+def list_inventory(db: Session) -> List[Dict[str, Any]]:
+    service = ProductService(db)
+    # Using a high limit to ensure we fetch all active inventory
+    products = service.list_active_inventory(limit=500)
+    return [
+        {
+            "id": p.id,
+            "sku": p.sku,
+            "name": p.name,
+            "category": p.category,
+            "unit": p.unit,
+            "quantity": float(p.quantity),
+            "selling_price": float(p.selling_price),
+            "gst_rate": float(p.gst_rate),
+        }
+        for p in products
+    ]
+
 def get_product(db: Session, identifier: str) -> Optional[Dict[str, Any]]:
     service = ProductService(db)
     p = None

@@ -56,16 +56,6 @@ class ProductService:
 
     def search(self, query: str, limit: int = 50) -> List[Product]:
         q = query.strip().lower()
-        
-        # If the LLM passes an open-ended wildcard or inventory search, return in-stock items
-        if q in ("", "*", "all", "inventory", "stock", "any"):
-            return (
-                self.db.query(Product)
-                .filter(Product.active == True, Product.quantity > 0)
-                .limit(limit)
-                .all()
-            )
-
         search_pattern = f"%{q}%"
         return (
             self.db.query(Product)
@@ -73,6 +63,14 @@ class ProductService:
                 Product.active == True,
                 or_(Product.name.ilike(search_pattern), Product.sku.ilike(search_pattern), Product.category.ilike(search_pattern)),
             )
+            .limit(limit)
+            .all()
+        )
+
+    def list_active_inventory(self, limit: int = 500) -> List[Product]:
+        return (
+            self.db.query(Product)
+            .filter(Product.active == True, Product.quantity > 0)
             .limit(limit)
             .all()
         )

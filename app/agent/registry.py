@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 TOOL_MAP: Dict[str, Callable[..., Any]] = {
     # Inventory
     "search_products": tools.search_products,
+    "list_inventory": tools.list_inventory,
     "get_product": tools.get_product,
     "add_product": tools.add_product,
     "receive_stock": tools.receive_stock,
@@ -41,13 +42,21 @@ TOOL_MAP: Dict[str, Callable[..., Any]] = {
 TOOL_SCHEMAS: List[Dict[str, Any]] = [
     {
         "name": "search_products",
-        "description": "Search product catalog to find what's in stock, verify existence, or get product IDs. Call this when the user asks 'do we have maggi', 'what's available', 'show stock', or before adding items to a bill.",
+        "description": "Search product catalog for a SPECIFIC product (e.g. 'do we sell maggi', 'find atta', 'how much salt do we have'). Do NOT use this for global inventory questions.",
         "parameters": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "Search term e.g. 'Atta', 'Maggi', 'Sugar'"}
+                "query": {"type": "string", "description": "Specific search term e.g. 'Atta', 'Maggi', 'Sugar'"}
             },
             "required": ["query"],
+        },
+    },
+    {
+        "name": "list_inventory",
+        "description": "Get a complete list of all active products currently in stock. Use this when the user asks global questions like 'what products are in stock', 'list all products', or 'show inventory'.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
         },
     },
     {

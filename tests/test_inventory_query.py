@@ -2,7 +2,7 @@ import pytest
 from app.services.product_service import ProductService
 from app.db.models import Product
 from app.db.seed import seed_database
-from app.tools.inventory_tools import search_products, add_product
+from app.tools.inventory_tools import search_products, add_product, list_inventory
 
 def test_search_specific_product(db_session):
     """Test searching for a specific product works normally."""
@@ -20,17 +20,12 @@ def test_search_wildcard_returns_all_in_stock(db_session):
     in_stock_count = db_session.query(Product).filter(Product.active == True, Product.quantity > 0).count()
     assert in_stock_count > 0, "Database must have in-stock items"
     
-    # Test wildcard '*'
-    results_star = search_products(db_session, "*")
-    assert len(results_star) == in_stock_count
+    # Test list_inventory instead of wildcard '*'
+    results = list_inventory(db_session)
+    assert len(results) == in_stock_count
 
-    # Test wildcard 'all'
-    results_all = search_products(db_session, "all")
-    assert len(results_all) == in_stock_count
-
-    # Test empty query
-    results_empty = search_products(db_session, "")
-    assert len(results_empty) == in_stock_count
+    # Remove redundant wildcard tests since list_inventory has no query parameter
+    pass
 
 def test_search_wildcard_excludes_out_of_stock(db_session):
     """Test wildcard queries exclude products with 0 quantity."""
@@ -41,8 +36,8 @@ def test_search_wildcard_excludes_out_of_stock(db_session):
     product.quantity = 0.0
     db_session.commit()
     
-    results = search_products(db_session, "*")
-    assert not any(r["id"] == product.id for r in results), "Out of stock item was returned in wildcard search!"
+    results = list_inventory(db_session)
+    assert not any(r["id"] == product.id for r in results), "Out of stock item was returned in list_inventory!"
 
 def test_search_wildcard_excludes_inactive(db_session):
     """Test wildcard queries exclude inactive products."""
@@ -53,16 +48,16 @@ def test_search_wildcard_excludes_inactive(db_session):
     product.active = False
     db_session.commit()
     
-    results = search_products(db_session, "*")
-    assert not any(r["id"] == product.id for r in results), "Inactive item was returned in wildcard search!"
+    results = list_inventory(db_session)
+    assert not any(r["id"] == product.id for r in results), "Inactive item was returned in list_inventory!"
 
 def test_duplicate_detection_is_consistent(db_session):
     """Test that a product found via wildcard is also detected as a duplicate when adding."""
     seed_database(db_session)
     product = db_session.query(Product).first()
     
-    # It should be found in wildcard
-    results = search_products(db_session, "*")
+    # It should be found in list_inventory
+    results = list_inventory(db_session)
     assert any(r["id"] == product.id for r in results)
     
     # It should trigger duplicate error when adding again with same SKU

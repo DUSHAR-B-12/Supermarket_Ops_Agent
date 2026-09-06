@@ -3,6 +3,7 @@ Agent tool definitions package.
 """
 from app.tools.inventory_tools import (
     search_products,
+    list_inventory,
     get_product,
     add_product,
     receive_stock,
@@ -37,6 +38,7 @@ from app.tools.report_tools import (
 __all__ = [
     # Inventory
     "search_products",
+    "list_inventory",
     "get_product",
     "add_product",
     "receive_stock",

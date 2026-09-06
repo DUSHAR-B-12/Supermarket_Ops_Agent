@@ -401,7 +401,7 @@ class LLMClient:
                 "unit": "piece", "cost_price": 50.0, "mrp": 100.0, "selling_price": 90.0
             }}]
         elif any(phrase in msg_lower for phrase in ["what's in stock", "show stock", "check inventory", "what do we have", "list products", "inventory", "stock", "items are available", "what products"]):
-            return None, [{"name": "search_products", "arguments": {"query": "*"}}]
+            return None, [{"name": "list_inventory", "arguments": {}}]
         elif _re.search(r'\b(find|search|do we sell|show|check)\s+(maggi|atta|salt|butter|oil|facewash)\b', msg_lower):
             match = _re.search(r'\b(find|search|do we sell|show|check)\s+(maggi|atta|salt|butter|oil|facewash)\b', msg_lower)
             return None, [{"name": "search_products", "arguments": {"query": match.group(2)}}]

@@ -14,7 +14,7 @@ class DailyCloseService:
         Compute deterministic daily closing business summary from database records.
         """
         if not target_date:
-            target_date = date.today()
+            target_date = datetime.utcnow().date()
 
         date_str = target_date.strftime("%Y-%m-%d")
         start_of_day = datetime.combine(target_date, time.min)

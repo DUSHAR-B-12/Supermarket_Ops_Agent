@@ -5,6 +5,8 @@ from typing import Dict, Any, Optional
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
+from pptx.chart.data import CategoryChartData
+from pptx.enum.chart import XL_CHART_TYPE
 
 from app.config.settings import settings
 
@@ -80,16 +82,22 @@ def generate_analysis_deck_pptx(daily_data: Dict[str, Any], output_dir: Optional
     tf2.word_wrap = True
 
     breakdown = daily_data.get("payment_breakdown", {})
-    counts = daily_data.get("payment_counts", {})
     
-    for method in ["Cash", "UPI", "Card", "Khata"]:
-        val = breakdown.get(method, 0.0)
-        cnt = counts.get(method, 0)
-        p = tf2.add_paragraph() if tf2.paragraphs[0].text else tf2.paragraphs[0]
-        p.text = f"• {method}: ₹ {val:.2f} ({cnt} transactions)"
+    if breakdown:
+        chart_data = CategoryChartData()
+        chart_data.categories = list(breakdown.keys())
+        chart_data.add_series('Sales by Payment Method', list(breakdown.values()))
+        
+        # Add pie chart
+        x, y, cx, cy = Inches(1), Inches(1.8), Inches(6), Inches(4)
+        chart = slide2.shapes.add_chart(
+            XL_CHART_TYPE.PIE, x, y, cx, cy, chart_data
+        ).chart
+        chart.has_legend = True
+    else:
+        p = tf2.paragraphs[0]
+        p.text = "No payment data available for today."
         p.font.size = Pt(16)
-        p.font.color.rgb = DARK_GRAY
-        p.space_after = Pt(12)
 
     # Slide 3: Top Products Sold
     slide3 = prs.slides.add_slide(blank_layout)
@@ -100,12 +108,18 @@ def generate_analysis_deck_pptx(daily_data: Dict[str, Any], output_dir: Optional
 
     top_prods = daily_data.get("top_selling_products", [])
     if top_prods:
-        for idx, prod in enumerate(top_prods, 1):
-            p = tf3.add_paragraph() if tf3.paragraphs[0].text else tf3.paragraphs[0]
-            p.text = f"{idx}. {prod['name']} — {prod['quantity_sold']} {prod['unit']} (Revenue: ₹ {prod['revenue']:.2f})"
-            p.font.size = Pt(15)
-            p.font.color.rgb = DARK_GRAY
-            p.space_after = Pt(10)
+        chart_data = CategoryChartData()
+        names = [p['name'][:15] + ".." if len(p['name']) > 15 else p['name'] for p in top_prods]
+        revenues = [p['revenue'] for p in top_prods]
+        
+        chart_data.categories = names
+        chart_data.add_series('Revenue (₹)', revenues)
+        
+        x, y, cx, cy = Inches(1), Inches(1.8), Inches(8), Inches(4)
+        chart = slide3.shapes.add_chart(
+            XL_CHART_TYPE.COLUMN_CLUSTERED, x, y, cx, cy, chart_data
+        ).chart
+        chart.has_legend = False
     else:
         p = tf3.paragraphs[0]
         p.text = "No items sold on this date."

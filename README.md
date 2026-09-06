@@ -1,70 +1,64 @@
-# Nebula Supermarket Ops Agent
+# Supermarket Ops Agent
 
-An agentic Telegram bot system designed to run an Indian supermarket / kirana store end-to-end via conversational interaction.
+An autonomous, conversational AI agent that runs an entire Indian kirana store end-to-end via Telegram, powered by LLM tool orchestration.
 
-## Architecture & Design Principles
-- **Telegram Interface Only**: No web frontend, forms, or admin panels. Chat is the product.
-- **Agent-First**: The LLM reasons over messy human requests and orchestrates appropriate domain tools.
-- **Strict Business Logic**: Oversell protection, GST computations, khata limits, and idempotency are enforced at the tool, service, and database transaction layer.
+## Live Bot
+**@GreenBasketOpsBot**  *(Replace with actual deployed handle)*
 
-## Project Structure
-```
-nebula-supermarket-ops-agent/
-├── app/
-│   ├── agent/        # AI Agent runner, prompt engineering, and tool calling loop
-│   ├── tools/        # Business tools registered for the LLM agent
-│   ├── services/     # Core domain services (inventory, billing, khata, tax, report)
-│   ├── db/           # SQLAlchemy models, sessions, and database initializations
-│   ├── telegram/     # Telegram bot handlers and lifecycle management
-│   ├── artifacts/    # Generated PDF invoices and PPTX decks
-│   └── config/       # Environment settings and application configurations
-├── tests/            # Automated test suite (pytest)
-├── data/             # Persistent SQLite database storage
-├── .env.example      # Example environment variables template
-├── .gitignore        # Git ignore rules
-├── requirements.txt  # Project dependencies
-├── README.md         # Documentation
-└── run.py            # Main entry point script
-```
+## Architecture
+The application runs as a lightweight, stateful backend bridging a Telegram interface to an LLM.
 
-## Setup & Running
+`Telegram → Agent (LLM) → Skills/Tools → Domain Services → SQLite → PDF/PPTX generation`
 
-### 1. Environment Setup
-Copy `.env.example` to `.env` and fill in the required credentials:
-```bash
-cp .env.example .env
-```
+## Harness
+This agent is built using a custom, native ReAct-style loop built directly on top of the **Gemini and Groq Python SDKs**, rather than using heavyweight frameworks like LangChain or LangGraph. 
+**Why?** A custom loop provides absolute control over tool retry logic, idempotency checks, raw JSON schema alignment, and rate-limit fallbacks without the opaque abstraction overhead of node-based state machines.
 
-Ensure the following variables are configured in `.env`:
-- `TELEGRAM_BOT_TOKEN` - Obtain from [@BotFather](https://t.me/BotFather)
-- `GEMINI_API_KEY` - Your primary Google Gemini API key
-- `GEMINI_MODEL` - Primary model (e.g. `gemini-3.8-flash`)
-- `GEMINI_FALLBACK_MODELS` - Comma-separated list of fallback models
-- `GROQ_API_KEY` - Secondary fallback Groq API key
-- `DATABASE_URL` - SQLite URL (default: `sqlite:///./data/supermarket.db`)
+## Control Loop
+The core engine (`app/agent/runner.py`) uses a standard Agentic orchestration loop:
+1. **Observe**: Receive the plain-language Telegram message and fetch the user's conversation history & persistent preferences.
+2. **Reason**: The LLM analyzes the context and decides if it needs to execute a tool, ask for clarification, or finalize a response.
+3. **Tool Call**: If tools are chosen, they are securely invoked in a sandboxed execution context (e.g., adding items to a draft bill).
+4. **Tool Result**: The output of the Python functions (or SQL errors, stock guards) are fed back to the LLM.
+5. **Continue**: The LLM repeats the cycle (chaining multiple tools if necessary) until all tasks are resolved.
+6. **Natural-language Response**: The LLM synthesizes a final friendly response to the shopkeeper.
 
-### Example Commands
-Interact with the bot naturally in Telegram:
-- "What do we have in stock?"
-- "Add 100 packets of Aashirvaad Atta 5kg to stock"
-- "Make a bill for Ravi"
-- "Add 2 Tata Salt 1kg and 3 Maggi 70g"
-- "Finalize the bill"
-- "Generate invoice"
-- "Ravi paid ₹500 towards his khata"
-- "Generate daily close presentation"
+## Skills / Tools
+The agent acts through thin tool wrappers over robust business services:
+- **Inventory**: `search_products`, `receive_stock`, `get_stock`, `get_low_stock`
+- **Billing**: `create_draft_bill`, `add_bill_item`, `edit_bill_item`, `remove_bill_item`, `finalize_bill`
+- **Khata (Credit)**: `get_khata_balance`, `record_khata_repayment`
+- **Preferences**: `set_preference`, `get_preference`
+- **Analytics/Docs**: `get_daily_close`, `generate_invoice_pdf`, `generate_analysis_deck`
 
-### 2. Install Dependencies
+## Hard Parts
+- **DB Grounding**: Prices and stock are never hallucinated; the LLM uses `search_products` to fetch exact details before billing.
+- **Oversell Guard**: A strict `ValueError` is raised at the service layer if billed quantity > stock, which the LLM reads and relays to the user.
+- **GST**: Calculations for CGST, SGST, and 0/5/12/18% slabs are handled mathematically by `TaxService`, not by the LLM.
+- **Multi-turn Bills**: A `UserSession` table persists the `active_draft_bill_id`, allowing the user to add and edit items over several messages before finalizing.
+- **Idempotency**: Telegram retries are caught using an `idempotency_key` mapped to the bill, preventing double billing.
+- **Concurrency**: `finalize_bill` uses atomic SQL updates (`UPDATE ... WHERE quantity >= X`) to ensure two simultaneous checkout threads cannot oversell stock.
+- **Guardrails**: Hardcoded logic prevents selling below cost price or over-repaying a Khata balance.
+- **Persistence/Memory**: Preferences (e.g. "always assume UPI") are stored in SQLite and loaded into the System Prompt on every invocation.
+- **Artifacts**: Real `reportlab` PDFs and `python-pptx` presentations (with native Pie/Bar charts) are generated dynamically based on real-time SQLite queries.
+
+## Run Locally
+1. Clone the repository and install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
-
-### 3. Run the Bot
+2. Copy `.env.example` to `.env` and fill in your API keys (Telegram, Gemini).
+3. Start the bot:
 ```bash
 python run.py
 ```
 
-### 4. Run Tests
+## Tests
+The suite contains 79 tests (including LLM mocking, concurrency, and Telegram handler tests).
 ```bash
-pytest
+python -m pytest -q
 ```
+Result: `79 passed`
+
+## Demo
+A step-by-step 4-minute demonstration script of the bot's capabilities (Multi-item billing, Khata, PDF/PPTX generation, etc.) can be found in [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md).

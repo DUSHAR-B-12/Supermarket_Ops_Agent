@@ -261,10 +261,21 @@ class BillingService:
 
         # Atomic transaction execution: deduct stock & update status
         for item in bill.items:
-            product = self.db.query(Product).filter(Product.id == item.product_id).first()
-            product.quantity = float(product.quantity) - float(item.quantity)
+            req_qty = float(item.quantity)
+            rows_updated = self.db.query(Product).filter(
+                Product.id == item.product_id,
+                Product.quantity >= req_qty
+            ).update({"quantity": Product.quantity - req_qty}, synchronize_session=False)
+
+            if rows_updated == 0:
+                self.db.rollback()
+                raise ValueError(
+                    f"Concurrency Error: Insufficient stock for product ID {item.product_id}. "
+                    "Another transaction may have sold the remaining stock."
+                )
+
             movement = StockMovement(
-                product_id=product.id,
+                product_id=item.product_id,
                 movement_type=StockMovementType.OUT,
                 quantity=item.quantity,
                 reference=f"Bill Finalization #{bill.bill_number}",

@@ -14,7 +14,9 @@ class InventoryService:
         if not product:
             raise ValueError(f"Product with ID {product_id} not found.")
 
-        product.quantity = float(product.quantity) + float(quantity)
+        self.db.query(Product).filter(Product.id == product_id).update(
+            {"quantity": Product.quantity + float(quantity)}, synchronize_session=False
+        )
         movement = StockMovement(
             product_id=product_id,
             movement_type=StockMovementType.IN,

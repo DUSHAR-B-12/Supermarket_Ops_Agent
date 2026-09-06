@@ -400,8 +400,8 @@ class LLMClient:
                 "sku": "NEW-1", "name": "Facewash", "category": "Personal Care", 
                 "unit": "piece", "cost_price": 50.0, "mrp": 100.0, "selling_price": 90.0
             }}]
-        elif "what's in stock" in msg_lower or "show stock" in msg_lower or "check inventory" in msg_lower or "what do we have" in msg_lower or "list products" in msg_lower:
-            return None, [{"name": "search_products", "arguments": {"query": ""}}]
+        elif any(phrase in msg_lower for phrase in ["what's in stock", "show stock", "check inventory", "what do we have", "list products", "inventory", "stock", "items are available", "what products"]):
+            return None, [{"name": "search_products", "arguments": {"query": "*"}}]
         elif _re.search(r'\b(find|search|do we sell|show|check)\s+(maggi|atta|salt|butter|oil|facewash)\b', msg_lower):
             match = _re.search(r'\b(find|search|do we sell|show|check)\s+(maggi|atta|salt|butter|oil|facewash)\b', msg_lower)
             return None, [{"name": "search_products", "arguments": {"query": match.group(2)}}]

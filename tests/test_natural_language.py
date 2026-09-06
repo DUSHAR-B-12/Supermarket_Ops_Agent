@@ -29,17 +29,25 @@ async def test_conversational_chatter(db_session):
 
 @pytest.mark.asyncio
 async def test_inventory_semantic_variations(db_session):
-    # Tests multiple ways to ask for inventory
+    # Tests multiple ways to ask for inventory (global wildcard searches)
     phrases = [
+        "What products are in stock?",
+        "What do we have?",
+        "Show me the inventory",
+        "List everything in stock",
+        "How much stock do we have?",
+        "What items are available?",
+        "what products do we currently have",
         "what's in stock",
         "show stock",
         "check inventory",
-        "what do we have",
         "list products"
     ]
     for p in phrases:
         resp = await process_agent_message(123, p, db=db_session)
-        assert "found" in resp.lower() or "product(s)" in resp.lower() or "stock" in resp.lower()
+        # Should not say inventory is empty, should list products (e.g., Maggi, Aashirvaad)
+        assert "empty" not in resp.lower()
+        assert "maggi" in resp.lower() or "aashirvaad" in resp.lower() or "found" in resp.lower() or "stock" in resp.lower()
 
 @pytest.mark.asyncio
 async def test_product_search_variations(db_session):

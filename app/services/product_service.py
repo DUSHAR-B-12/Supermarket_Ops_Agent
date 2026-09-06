@@ -54,8 +54,19 @@ class ProductService:
     def get_by_sku(self, sku: str) -> Optional[Product]:
         return self.db.query(Product).filter(Product.sku == sku, Product.active == True).first()
 
-    def search(self, query: str, limit: int = 10) -> List[Product]:
-        search_pattern = f"%{query.strip()}%"
+    def search(self, query: str, limit: int = 50) -> List[Product]:
+        q = query.strip().lower()
+        
+        # If the LLM passes an open-ended wildcard or inventory search, return in-stock items
+        if q in ("", "*", "all", "inventory", "stock", "any"):
+            return (
+                self.db.query(Product)
+                .filter(Product.active == True, Product.quantity > 0)
+                .limit(limit)
+                .all()
+            )
+
+        search_pattern = f"%{q}%"
         return (
             self.db.query(Product)
             .filter(

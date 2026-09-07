@@ -61,5 +61,5 @@ python -m pytest -q
 Result: `112 passed`
 
 ## Demo & Recording
-- **Video Recording**: [Link to 4-5 min recording demonstrating the required flows]
+- **Video Recording**: https://drive.google.com/file/d/18qjTlKxd4_CetrUYCpcQUD8Cwy9ycfIu/view?usp=drivesdk
 - A step-by-step 4-minute demonstration script of the bot's capabilities (Multi-item billing, Khata, PDF/PPTX generation, etc.) can be found in [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md).
